@@ -44,6 +44,21 @@ describe('capabilityCore/canvasGraph', () => {
     expect(before.nodes).toHaveLength(0)
   })
 
+  it('addNodes 把 nomi-local assetUrl 绑成节点产物，其它 scheme 忽略', () => {
+    const { snapshot } = addNodes(emptyCanvasSnapshot(), [
+      { kind: 'audio', title: 'BGM', assetUrl: 'nomi-local://asset/p/bgm.mp3' },
+      { kind: 'audio', title: 'bad', assetUrl: 'file:///tmp/secret.wav' },
+    ])
+    expect(snapshot.nodes[0].status).toBe('success')
+    expect(snapshot.nodes[0].result).toMatchObject({
+      type: 'audio',
+      url: 'nomi-local://asset/p/bgm.mp3',
+      taskKind: 'asset',
+    })
+    expect(snapshot.nodes[1].status).toBe('idle')
+    expect(snapshot.nodes[1].result).toBeUndefined()
+  })
+
   it('addNodes 给 vendor+modelKey → 绑进 meta 的解析器可见四件（同 UI 身份）', () => {
     const { snapshot } = addNodes(emptyCanvasSnapshot(), [
       { kind: 'video', vendor: 'apimart', modelKey: 'seedance-2' },

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '../../utils/cn'
 import { useWorkbenchStore } from '../workbenchStore'
 import type { TimelineClip, TimelineState } from '../timeline/timelineTypes'
-import { resolveActiveTextClipsAtFrame } from '../timeline/timelineMath'
+import { computeTimelineDuration, resolveActiveTextClipsAtFrame } from '../timeline/timelineMath'
 import { resolveTextBox, resolveOverlayTransform } from '../timeline/textLayout'
 import { resolveClipFraming, clampFramingScale } from '../timeline/clipFraming'
 import { framingOfTarget, resolveFramingTarget } from '../timeline/framingTarget'
@@ -20,10 +20,11 @@ import { markChecklistStep } from '../onboarding/onboardingState'
 import { buildMp4ExportButtonTitle } from '../export/exportCopy'
 import { toast } from '../../ui/toast'
 import { useVideoPlaybackHeal } from '../../media/useVideoPlaybackHeal'
-import { computeTimelineDuration } from '../timeline/timelineMath'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { getDesktopActiveProjectId } from '../../desktop/activeProject'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
+import { ensureTimelineExportFilmNode } from '../generationCanvas/agent/timelineExportFilmNode'
+import { buildWorkspaceFileUrl } from '../explorer/workspaceFileDrag'
 import { resolveTimelineClipPlaybackUrl } from '../timeline/timelinePlaybackUrl'
 import { usePreviewVideoPlayheadSync } from './usePreviewVideoPlayheadSync'
 
@@ -270,6 +271,12 @@ export default function TimelinePreview({ activeClips, aspectRatio, fps, playhea
         },
       })
       toast(t('timelinePreview.exportComplete', { path: result.relativePath }), 'success')
+      ensureTimelineExportFilmNode(useGenerationCanvasStore, {
+        relativePath: result.relativePath,
+        outputUrl: buildWorkspaceFileUrl(projectId, result.relativePath),
+        durationSeconds: computeTimelineDuration(timeline) / Math.max(1, timeline.fps),
+        title: t('generationCommon.clipNode.outputNodeTitle'),
+      })
       // 上手清单第 4 步「导出成片」打勾（导出 fire-and-forget 无持久历史，靠这里标记）。
       markChecklistStep('exported')
       void getDesktopBridge()?.exports.showInFolder({ projectId, relativePath: result.relativePath }).catch(() => undefined)

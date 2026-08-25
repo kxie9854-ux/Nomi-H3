@@ -36,6 +36,7 @@ import { useCanvasPointerInteractions } from './useCanvasPointerInteractions'
 import { useCanvasContextNodeMenu } from './useCanvasContextNodeMenu'
 import { useDragToConnect } from './useDragToConnect'
 import { CanvasEmptyState } from './CanvasEmptyState'
+import { openDirectorFromEmptyCanvas } from './openDirectorFromEmptyCanvas'
 import { CanvasNavigationStack } from './CanvasNavigationStack'
 import { SelectionPromptSaveController } from './SelectionPromptSaveController'
 import { useNodeAppearTracking } from './useNodeAppearTracking'
@@ -74,7 +75,6 @@ const CameraMoveCaptureHost = lazyWithChunkBoundary('3D 运镜捕获', () =>
 const BatchPlanOverlay = lazyWithChunkBoundary('批量生成面板', () =>
   import('./BatchPlanOverlay').then((module) => ({ default: module.BatchPlanOverlay })),
 )
-
 const MULTI_SELECTION_BOUNDS_PADDING = 16
 const MULTI_SELECTION_TOOLBAR_OFFSET = 58
 
@@ -735,6 +735,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
           {nodes.length === 0 ? (
             <CanvasEmptyState
               activeCategoryId={activeCategoryId}
+              onStartDirector={() => openDirectorFromEmptyCanvas(useGenerationCanvasStore.getState().setGenerationAiCollapsed)}
               onCreate={() => addNode({ kind: 'image', position: { x: 240, y: 240 }, categoryId: activeCategoryId, select: true })}
             />
           ) : null}

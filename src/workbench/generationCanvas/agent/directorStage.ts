@@ -6,6 +6,7 @@ export type DirectorStageNode = {
   kind: string
   status?: string
   result?: { url?: string; type?: string } | null
+  meta?: Record<string, unknown>
 }
 
 function isBusy(node: DirectorStageNode): boolean {
@@ -41,6 +42,9 @@ export function inferDirectorStage(
 
   if (videos.some(isBusy)) return 'render'
   if (images.some(isBusy)) return 'stills'
+  if (nodes.some((node) => node.kind === 'video' && node.meta?.outputKind === 'timeline-export' && hasUrl(node))) {
+    return 'film'
+  }
   if (videosWithResult.length > 0) {
     const assembled = videosWithResult.every((node) => onTimeline.has(node.id))
     return assembled ? 'film' : 'render'

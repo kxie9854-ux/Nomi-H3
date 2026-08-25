@@ -18,7 +18,7 @@ import i18n from '../../../i18n'
  * - 没有视频节点的纯图镜头（单层模式 / 漫画故事板）→ 按 shotIndex 直接成片（role: 'still'）
  */
 
-export type StoryboardTimelineUnitRole = 'video' | 'placeholder' | 'still'
+export type StoryboardTimelineUnitRole = 'video' | 'placeholder' | 'still' | 'audio'
 
 export type StoryboardTimelineUnit = {
   /** 真正落 clip 的节点 id（视频节点，或被借作占位的关键帧节点）。 */
@@ -132,4 +132,21 @@ export function planStoryboardTimeline(
   })
 
   return { units, skipped }
+}
+
+function hasAudioResult(node: GenerationCanvasNode): boolean {
+  return Boolean(node.result?.url && String(node.result.url).trim()) && (
+    node.result?.type === 'audio' || getGenerationNodeExecutionKind(node.kind) === 'audio'
+  )
+}
+
+/** Imported or generated audio nodes sit on the audio track; they are not shot units. */
+export function planImportedAudio(
+  nodes: readonly GenerationCanvasNode[],
+  scopeNodeIds?: readonly string[],
+): StoryboardTimelineUnit[] {
+  const inScope = scopeNodeIds && scopeNodeIds.length ? new Set(scopeNodeIds) : null
+  return nodes
+    .filter((node) => node.kind === 'audio' && hasAudioResult(node) && (!inScope || inScope.has(node.id)))
+    .map((node, index) => ({ nodeId: node.id, shotIndex: index, role: 'audio' as const }))
 }

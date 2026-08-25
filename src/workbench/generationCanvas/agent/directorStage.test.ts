@@ -36,6 +36,17 @@ describe('inferDirectorStage', () => {
       node({ id: 'v', kind: 'video', result: { url: 'nomi-local://v.mp4', type: 'video' } }),
     ], new Set(['v']))).toBe('film')
   })
+
+  it('reaches film when a timeline-export node is on the canvas', () => {
+    expect(inferDirectorStage([
+      node({
+        id: 'film',
+        kind: 'video',
+        result: { url: 'nomi-local://export.mp4', type: 'video' },
+        meta: { outputKind: 'timeline-export' },
+      }),
+    ], new Set())).toBe('film')
+  })
 })
 
 describe('timelineSourceNodeIds', () => {

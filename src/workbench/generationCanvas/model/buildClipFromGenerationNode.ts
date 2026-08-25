@@ -42,10 +42,10 @@ function resolveSelectedResult(node: GenerationCanvasNode, resultId?: string): G
 }
 
 function resolveClipType(node: GenerationCanvasNode, result: GenerationNodeResult | null): TimelineClipType {
-  // v0.7.1: audio category 优先级最高（即使 kind 占位是 image）
-  if (node.categoryId === 'audio') return 'audio'
+  if (node.categoryId === 'audio' || node.kind === 'audio' || result?.type === 'audio') return 'audio'
   if (result?.type === 'image' || result?.type === 'video') return result.type
   const executionKind = getGenerationNodeExecutionKind(node.kind)
+  if (executionKind === 'audio') return 'audio'
   if (executionKind === 'image') return 'image'
   if (executionKind === 'video') return 'video'
   return 'image'

@@ -39,6 +39,20 @@ describe('buildClipFromGenerationNode URL 口径（本地 url 优先）', () => 
     expect(buildClipFromGenerationNode(makeNode({}))).toBeNull()
     expect(buildClipFromGenerationNode(makeNode(null))).toBeNull()
   })
+
+  it('audio 节点落到 audio clip，不退化成 image', () => {
+    const clip = buildClipFromGenerationNode({
+      id: 'bgm',
+      kind: 'audio',
+      title: 'BGM',
+      position: { x: 0, y: 0 },
+      categoryId: 'audio',
+      result: { id: 'r-audio', type: 'audio', url: 'nomi-local://bgm.mp3', createdAt: 1, durationSeconds: 10 },
+    })
+    expect(clip?.type).toBe('audio')
+    expect(clip?.url).toBe('nomi-local://bgm.mp3')
+    expect(clip?.frameCount).toBe(300)
+  })
 })
 
 describe('buildClipFromGenerationNode 视频时长真相序（修「拖入视频一律 5 秒」）', () => {

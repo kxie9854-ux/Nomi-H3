@@ -1,4 +1,4 @@
-import { IconCoin, IconPlayerStopFilled, IconRobot, IconSend2, IconX } from '@tabler/icons-react'
+import { IconCoin, IconDots, IconPlayerStopFilled, IconRobot, IconSend2, IconX } from '@tabler/icons-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiAILabel, WorkbenchButton, WorkbenchIconButton } from '../../../design'
@@ -28,6 +28,7 @@ import {
   type DirectorPanelLine,
 } from '../agent/directorHistoryHydration'
 import { buildDirectorRestoreSummary, type DirectorRestoreSummary } from '../agent/directorRestoreSummary'
+import { FOCUS_DIRECTOR_COMPOSER_EVENT } from '../nodes/nodeSizing'
 
 type CodexEvent =
   | { kind: 'status'; ready: boolean; account: { type?: string; email?: string | null; planType?: string | null } | null; error?: string }
@@ -154,7 +155,9 @@ export default function CodexDirectorPanel({
   const [activity, setActivity] = React.useState('')
   const [elicitation, setElicitation] = React.useState<PendingElicitation | null>(null)
   const [respondingToElicitation, setRespondingToElicitation] = React.useState(false)
+  const [overflowOpen, setOverflowOpen] = React.useState(false)
   const assistantId = React.useRef<string | null>(null)
+  const overflowRef = React.useRef<HTMLDivElement>(null)
   const [projectId, setProjectId] = React.useState(() => (
     getActiveWorkbenchProjectId() || getDesktopActiveProjectId() || ''
   ))
@@ -178,6 +181,23 @@ export default function CodexDirectorPanel({
   React.useEffect(() => {
     onCollapsedChange?.(collapsed)
   }, [collapsed, onCollapsedChange])
+
+  React.useEffect(() => {
+    const focusComposer = () => {
+      document.querySelector<HTMLTextAreaElement>('[data-testid="codex-director-composer"]')?.focus()
+    }
+    window.addEventListener(FOCUS_DIRECTOR_COMPOSER_EVENT, focusComposer)
+    return () => window.removeEventListener(FOCUS_DIRECTOR_COMPOSER_EVENT, focusComposer)
+  }, [])
+
+  React.useEffect(() => {
+    if (!overflowOpen) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (!overflowRef.current?.contains(event.target as Node)) setOverflowOpen(false)
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    return () => window.removeEventListener('pointerdown', onPointerDown)
+  }, [overflowOpen])
 
   React.useEffect(() => subscribeDesktopActiveProjectIdChange((nextProjectId) => {
     setProjectId(nextProjectId.trim())
@@ -378,9 +398,26 @@ export default function CodexDirectorPanel({
         <span className={cn('text-caption text-nomi-ink-3 truncate flex-1')}>
           {accountLabel || t('generationCommon.codex.needLogin')}
         </span>
-        <WorkbenchButton className="text-caption" onClick={() => setDirector('nomi')}>
-          {t('generationCommon.codex.switchNomi')}
-        </WorkbenchButton>
+        <div ref={overflowRef} className="relative">
+          <WorkbenchIconButton
+            label={t('generationCommon.codex.moreActions')}
+            icon={<IconDots size={16} />}
+            onClick={() => setOverflowOpen((open) => !open)}
+          />
+          {overflowOpen ? (
+            <div className="absolute right-0 top-full z-20 mt-1 min-w-[9rem] rounded-nomi border border-nomi-line bg-nomi-paper py-1 shadow-nomi-sm">
+              <WorkbenchButton
+                className="w-full justify-start px-3 text-caption"
+                onClick={() => {
+                  setOverflowOpen(false)
+                  setDirector('nomi')
+                }}
+              >
+                {t('generationCommon.codex.switchNomi')}
+              </WorkbenchButton>
+            </div>
+          ) : null}
+        </div>
         <WorkbenchIconButton label={t('generationCommon.codex.collapse')} icon={<IconX size={16} />} onClick={() => setCollapsed(true)} />
       </header>
       <DirectorStageStrip stage={stage} />
@@ -479,6 +516,7 @@ export default function CodexDirectorPanel({
         ) : null}
         <div className={cn('flex items-end gap-2')}>
           <AutoGrowTextarea
+            data-testid="codex-director-composer"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => handleAiComposerKeyDown(event, send)}

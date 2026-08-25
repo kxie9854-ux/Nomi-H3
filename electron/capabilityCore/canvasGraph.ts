@@ -13,7 +13,7 @@
 import { randomUUID } from 'node:crypto'
 import { ANCHOR_META_KEYS, isVisualAnchorKind } from './anchorBible'
 import { plainTextToTiptapDoc } from './plainTextDoc'
-import { buildCanvasNodes, type CanvasNodeFactorySpec, type NodeFactoryDeps } from './canvasNodeFactory'
+import { buildCanvasNodes, type CanvasNodeFactorySpec, type CanvasNodeRecord, type NodeFactoryDeps } from './canvasNodeFactory'
 import { layoutBatchWith, type NodeBox } from './canvasNodeLayout'
 import {
   nodeKindDefaultCategory,
@@ -75,12 +75,31 @@ export type NodeSpec = {
   /** 外部调用方（MCP）给的模型身份——工厂绑进 meta 的解析器可见四件（同 UI 身份部分）。非法值原样存。 */
   vendor?: string
   modelKey?: string
+  /** nomi_import_asset 返回的 nomi-local://，绑成节点产物（BGM / 导入静帧）。其它 scheme 忽略。 */
+  assetUrl?: string
 }
 
 export type ConnectionSpec = {
   source: string
   target: string
   mode?: string
+}
+
+function attachImportedAsset(node: CanvasNodeRecord, assetUrl: string | undefined): CanvasNodeRecord {
+  const url = typeof assetUrl === 'string' ? assetUrl.trim() : ''
+  if (!url.startsWith('nomi-local://')) return node
+  const type = node.kind === 'audio' ? 'audio' : node.kind === 'video' || node.kind === 'clip' ? 'video' : 'image'
+  return {
+    ...node,
+    status: 'success',
+    result: {
+      id: `imported:${node.id}`,
+      type,
+      url,
+      taskKind: 'asset',
+      createdAt: Date.now(),
+    },
+  } as CanvasNodeRecord
 }
 
 const VALID_EDGE_MODES = new Set([
@@ -294,6 +313,7 @@ export function addNodes(
     shotIndex: typeof node.shotIndex === 'number' ? node.shotIndex : undefined,
   }))
   const built = buildCanvasNodes(factorySpecs, positions, existingShotIndexes, ELECTRON_NODE_FACTORY_DEPS)
+    .map((node, index) => attachImportedAsset(node, specs[index]?.assetUrl))
   for (const node of built) {
     // 角色/场景/道具卡自动带上 referenceSheet 标记——它本来就是参考卡，这是 kind 的推论，不是调用方的选项。
     // 为什么必须在这儿打：冻结门（anchorBible.isVisualAnchorNode）同时要 kind 和这个标记，而渲染层落节点

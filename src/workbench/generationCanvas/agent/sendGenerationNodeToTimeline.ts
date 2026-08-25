@@ -65,8 +65,6 @@ export function sendGenerationNodeToTimeline(
     resultId: options?.resultId,
   })
   if (!clip) return { ok: false, error: 'clip_unavailable', nodeId: id }
-  // v0.7.1: clip.type 是 'image' | 'video' | 'audio'，trackType 是 'image' | 'video'
-  // audio clip 落到 video 轨道
   const trackType = getTrackTypeForClipType(clip.type)
   if (options?.trackType && options.trackType !== trackType) {
     return { ok: false, error: 'track_type_mismatch', nodeId: id, clip }

@@ -16,6 +16,11 @@ describe('checkImportAsset · 放行', () => {
     expect(checkImportAsset({ ...base, rawPath: '/Users/me/a.mp4', realPath: '/Users/me/a.mp4' }).ok).toBe(true)
     expect(checkImportAsset({ ...base, rawPath: '/Users/me/a.MOV', realPath: '/Users/me/a.MOV' }).ok).toBe(true)
   })
+  it('音频素材（mp3/wav/m4a）也放行', () => {
+    expect(checkImportAsset({ ...base, rawPath: '/Users/me/a.mp3', realPath: '/Users/me/a.mp3' }).ok).toBe(true)
+    expect(checkImportAsset({ ...base, rawPath: '/Users/me/bgm.wav', realPath: '/Users/me/bgm.wav' }).ok).toBe(true)
+    expect(checkImportAsset({ ...base, rawPath: '/Users/me/theme.m4a', realPath: '/Users/me/theme.m4a' }).ok).toBe(true)
+  })
   it('目录名含 ssh 但不是 .ssh 段 → 不误伤（段匹配非子串）', () => {
     expect(checkImportAsset({ ...base, rawPath: '/Users/me/sshots/a.png', realPath: '/Users/me/sshots/a.png' }).ok).toBe(true)
   })
@@ -76,6 +81,8 @@ describe('contentTypeForExtension', () => {
     expect(contentTypeForExtension('.png')).toBe('image/png')
     expect(contentTypeForExtension('.JPG')).toBe('image/jpeg')
     expect(contentTypeForExtension('.mp4')).toBe('video/mp4')
+    expect(contentTypeForExtension('.mp3')).toBe('audio/mpeg')
+    expect(contentTypeForExtension('.wav')).toBe('audio/wav')
     expect(contentTypeForExtension('.xyz')).toBe('application/octet-stream')
   })
 })

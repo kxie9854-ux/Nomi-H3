@@ -1,5 +1,4 @@
-// 画布空状态 CTA（E.2C-24，从 GenerationCanvas 抽出，R9/R12 防巨壳）。
-// 分类感知的引导按钮：根据当前分类显示「这里还没有 X / + 新建 X」，点一下落一个空节点。
+// 空画布引导：本 fork 主路径是对 Codex 说话，不是手建一张空图。
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchButton } from '../../../design'
@@ -7,10 +6,15 @@ import { cn } from '../../../utils/cn'
 
 type CanvasEmptyStateProps = {
   activeCategoryId: string
+  onStartDirector: () => void
   onCreate: () => void
 }
 
-export function CanvasEmptyState({ activeCategoryId, onCreate }: CanvasEmptyStateProps): JSX.Element {
+export function CanvasEmptyState({
+  activeCategoryId,
+  onStartDirector,
+  onCreate,
+}: CanvasEmptyStateProps): JSX.Element {
   const { t } = useTranslation()
   const supportedCategories = new Set(['shots', 'cast', 'scene', 'prop', 'audio'])
   const categoryKey = supportedCategories.has(activeCategoryId) ? activeCategoryId : 'fallback'
@@ -24,10 +28,10 @@ export function CanvasEmptyState({ activeCategoryId, onCreate }: CanvasEmptyStat
       )}
     >
       <strong className="text-body text-nomi-ink">
-        {t('generationCommon.canvas.empty.title', { category: activeCategoryName })}
+        {t('generationCommon.canvas.empty.directorTitle')}
       </strong>
-      <span className="text-caption text-nomi-ink-60 max-w-[300px]">
-        {t('generationCommon.canvas.empty.description')}
+      <span className="text-caption text-nomi-ink-60 max-w-[320px]">
+        {t('generationCommon.canvas.empty.directorDescription')}
       </span>
       <WorkbenchButton
         className={cn(
@@ -36,10 +40,17 @@ export function CanvasEmptyState({ activeCategoryId, onCreate }: CanvasEmptyStat
           'font-[inherit] text-caption font-medium',
           'hover:enabled:bg-nomi-accent',
         )}
+        aria-label={t('generationCommon.canvas.empty.startDirectorAria')}
+        onClick={onStartDirector}
+      >
+        {t('generationCommon.canvas.empty.startDirector')}
+      </WorkbenchButton>
+      <WorkbenchButton
+        className="border-0 bg-transparent text-caption text-nomi-ink-60 shadow-none hover:bg-transparent hover:text-nomi-ink"
         aria-label={t('generationCommon.canvas.empty.createAria', { category: activeCategoryName })}
         onClick={onCreate}
       >
-        {t('generationCommon.canvas.empty.create', { category: activeCategoryName })}
+        {t('generationCommon.canvas.empty.createManual', { category: activeCategoryName })}
       </WorkbenchButton>
     </div>
   )

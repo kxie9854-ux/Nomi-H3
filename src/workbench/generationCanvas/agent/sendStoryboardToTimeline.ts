@@ -1,7 +1,7 @@
 import { useWorkbenchStore } from '../../workbenchStore'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { sendGenerationNodeToTimeline } from './sendGenerationNodeToTimeline'
-import { planStoryboardTimeline, type StoryboardTimelineUnitRole } from './storyboardTimelinePlan'
+import { planImportedAudio, planStoryboardTimeline, type StoryboardTimelineUnitRole } from './storyboardTimelinePlan'
 import type { TimelineState, TimelineTextClip, TimelineTransition } from '../../timeline/timelineTypes'
 
 export type SendStoryboardToTimelineResult = {
@@ -187,11 +187,18 @@ export function arrangeStoryboardToTimeline(
 ): SendStoryboardToTimelineResult {
   const canvasState = useGenerationCanvasStore.getState()
   const { units, skipped } = planStoryboardTimeline(canvasState.nodes, canvasState.edges, options.nodeIds)
+  const audioUnits = planImportedAudio(canvasState.nodes, options.nodeIds)
+  const allUnits = [...units, ...audioUnits]
   const timeline = useWorkbenchStore.getState().timeline
   // append 幂等：滤掉已在时间轴上的单位（按 sourceNodeId），避免重复触发把同一节点
   // 再复制一份到末尾（clip id 含 startFrame，末尾 startFrame 不同 → 旧逻辑会生成重复 clip）。
-  const { kept, skipped: alreadyPlaced } = partitionUnitsByTimelinePresence(units, timelineSourceNodeIds(timeline))
+  const { kept, skipped: alreadyPlaced } = partitionUnitsByTimelinePresence(allUnits, timelineSourceNodeIds(timeline))
+  const visualKept = kept.filter((unit) => unit.role !== 'audio')
+  const audioKept = kept.filter((unit) => unit.role === 'audio')
   const startFrame = timelineEndFrame(timeline)
-  const sent = placeUnitsSequentially(kept, startFrame)
-  return { ok: sent.length > 0, total: units.length, sent, skipped: [...skipped, ...alreadyPlaced] }
+  const sent = [
+    ...placeUnitsSequentially(visualKept, startFrame),
+    ...placeUnitsSequentially(audioKept, 0),
+  ]
+  return { ok: sent.length > 0, total: allUnits.length, sent, skipped: [...skipped, ...alreadyPlaced] }
 }

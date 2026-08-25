@@ -30,5 +30,12 @@ P1 两镜成片闭环已经真机跑通。新开空项目时，画布仍在教�
 1. 新建空项目：Codex 展开，空画布主按钮是「开始导演」，不落空 image 节点。
 2. Codex 顶栏无「Nomi 助手」主按钮；溢出菜单仍可切回。
 3. 导入本机 mp3 后 assemble，音频轨有 clip。
-4. 时间轴导出成功后画布出现 clip 成片卡，重启仍在。
+4. 时间轴导出成功后画布出现成片卡，重启仍在。
 5. 不回归已有两镜 hydration、分组、resume_only、花费确认、竖屏画幅。
+
+## 落地备注（2026-08-25）
+
+- 成片卡复用现有 clip→canvas 导出形态：`kind=video` + `meta.outputKind=timeline-export`，标题走「剪辑成片」。`kind=clip` 仍是剪辑编辑器，不是成品预览卡。
+- BGM 不生成：`nomi_import_asset` 扩音频白名单，`nomi_add_nodes.assetUrl` 只接受 `nomi-local://`。
+- 单测已覆盖空画布打开导演、音频 import/assemble 规划、成片节点幂等、导演阶段条。
+- 未在本轮做完整 Electron 真机走查（需 `pnpm dev` 后新建空项目点「开始导演」、导入 mp3、导出成片）。

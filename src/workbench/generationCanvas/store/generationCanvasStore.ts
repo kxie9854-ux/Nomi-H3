@@ -42,7 +42,7 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
   canvasOffset: { x: 0, y: 0 },
   generationAiDraft: '',
   generationAiMessages: [],
-  generationAiCollapsed: true,
+  generationAiCollapsed: false,
   generationDirector: 'codex',
   canUndo: false,
   canRedo: false,
@@ -225,6 +225,7 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
       canvasZoom: 1,
       canvasOffset: { x: 0, y: 0 },
       hasClipboard: false,
+      ...(normalized.nodes.length === 0 ? { generationAiCollapsed: false } : {}),
       ...getHistoryFlags(),
     })
     // genesis 事件不在这里发(S5-b-1):必须等 hydrate 尾部重放完成后由

@@ -149,7 +149,13 @@ Video: always `vendor=autodl-art`, `modelKey=autodl-art-h3`, `intent=video`, `du
 
 ## STEP 7 — clips as the film
 
-After each H3 clip: look at it, then gate approve / redo that shot. After all shots are approved, call `nomi_assemble_timeline` with the open `projectId` (omit `nodeIds` unless the user picked a subset). Then STOP:
+After each H3 clip: look at it, then gate approve / redo that shot. After all shots are approved:
+
+1. If the user wants BGM, they must supply a local audio file. Call `nomi_import_asset` with the absolute path, then `nomi_add_nodes` with `kind=audio` and `assetUrl` set to the returned `nomi-local://` URL. Do **not** generate music or TTS as a stand-in for BGM. If they have no file, stop on a choice card asking for a path — do not skip silently.
+2. Call `nomi_assemble_timeline` with the open `projectId` (omit `nodeIds` unless the user picked a subset). That lays video shots in order **and** imported audio onto the audio track.
+3. Tell the user to export from the timeline. Export creates a 成片 video card on the canvas. Do not invent a concat file.
+
+Then STOP:
 
 ```
 :::choices
@@ -158,7 +164,7 @@ redo-shot | 重做其中一镜
 :::
 ```
 
-Do not invent a concat file. Optional BGM is an `audio` node. Final video must not contain storyboard labels, arrows, or panel frames. The project must be open in Nomi or assemble returns 409.
+Final video must not contain storyboard labels, arrows, or panel frames. The project must be open in Nomi or assemble returns 409.
 
 ## Stops
 

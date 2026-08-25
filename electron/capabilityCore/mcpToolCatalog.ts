@@ -70,6 +70,11 @@ export const MCP_TOOL_CATALOG = [
               modelKey: { type: 'string', description: '可选：模型标识。与 vendor 一起给；不给则打开节点时自动选默认模型。' },
               x: { type: 'number', description: '可选：显式落点 x（给了则优先于自动布局）。' },
               y: { type: 'number', description: '可选：显式落点 y（给了则优先于自动布局）。' },
+              assetUrl: {
+                type: 'string',
+                description:
+                  '可选：把 nomi_import_asset 返回的 nomi-local:// 地址绑成节点产物（BGM/参考图导入后不必再生成）。只接受 nomi-local://。',
+              },
             },
           },
         },
@@ -385,9 +390,10 @@ export const MCP_TOOL_CATALOG = [
     name: 'nomi_import_asset',
     description:
       '把**本机文件**导入项目当素材，返回可直接引用的 nomi-local:// 地址。'
-      + '用它把手绘帧 / 截图 / 用户给的参考图弄进来——导入后把返回的 url 放进 nomi_generate 的 references，'
-      + '或当画布节点的参考源。只收图片与视频（png/jpg/webp/gif/bmp/tiff/heic/mp4/mov/webm/m4v），'
-      + '单个 ≤64MB，须传**绝对路径**；系统/凭据目录（如 ~/.ssh、~/.nomi）的文件会被拒绝。',
+      + '用它把手绘帧 / 截图 / 用户给的参考图 / BGM 音频弄进来——导入后把返回的 url 放进 nomi_generate 的 references，'
+      + '或当画布节点的参考源。只收图片、视频与音频（png/jpg/webp/gif/bmp/tiff/heic/mp4/mov/webm/m4v/mp3/wav/m4a/aac/flac），'
+      + '单个 ≤64MB，须传**绝对路径**；系统/凭据目录（如 ~/.ssh、~/.nomi）的文件会被拒绝。'
+      + '导入 BGM 后用 nomi_add_nodes 建 kind=audio 节点，并把返回的 url 填进 assetUrl，再 nomi_assemble_timeline。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -487,8 +493,9 @@ export const MCP_TOOL_CATALOG = [
   {
     name: 'nomi_assemble_timeline',
     description:
-      '把画布上已生成的镜头按镜序追加到时间轴成片。省略 nodeIds 则排所有有结果的视频（缺视频用首帧占位）。'
-      + '已在时间轴上的镜头会跳过。项目必须在 Nomi 里打开。排完后可从时间轴导出，不要再让用户手拖。',
+      '把画布上已生成的镜头按镜序追加到时间轴成片。省略 nodeIds 则排所有有结果的视频（缺视频用首帧占位），'
+      + '并把已导入/已生成的 audio 节点排到音频轨（BGM）。已在时间轴上的镜头会跳过。项目必须在 Nomi 里打开。'
+      + '排完后可从时间轴导出，不要再让用户手拖。',
     inputSchema: {
       type: 'object',
       properties: {

@@ -14,6 +14,9 @@ import { mintSpendGrant } from '../api/taskApi'
 import { runGenerationNode } from '../generationCanvas/runner/generationRunController'
 import { arrangeStoryboardToTimeline } from '../generationCanvas/agent/sendStoryboardToTimeline'
 import { exportTimelineToMp4 } from '../export/exportApi'
+import { ensureTimelineExportFilmNode } from '../generationCanvas/agent/timelineExportFilmNode'
+import { buildWorkspaceFileUrl } from '../explorer/workspaceFileDrag'
+import { computeTimelineDuration } from '../timeline/timelineMath'
 import { verifyShotsAndReport, useShotVerifyStore, isShotVerifyEnabled } from '../generationCanvas/agent/shotVerifyStore'
 import { isAnchorFrozen, isVisualAnchorNode } from '../generationCanvas/model/anchorBibleKeys'
 import { assertDraftFilmReady, draftFilmTimelineFromState } from '../preview/timelineSubtitleTransitionContract'
@@ -494,6 +497,12 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
         aspectRatio: state.previewAspectRatio,
         generationNodes: useGenerationCanvasStore.getState().nodes,
         outputName: typeof data.outputName === 'string' ? data.outputName : undefined,
+      })
+      ensureTimelineExportFilmNode(useGenerationCanvasStore, {
+        relativePath: result.relativePath,
+        outputUrl: buildWorkspaceFileUrl(project, result.relativePath),
+        durationSeconds: computeTimelineDuration(state.timeline) / Math.max(1, state.timeline.fps),
+        title: i18n.t('generationCommon.clipNode.outputNodeTitle'),
       })
       return { relativePath: result.relativePath, size: result.size }
     }
