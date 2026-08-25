@@ -471,9 +471,9 @@ export const useWorkbenchStore = create<WorkbenchState>()(subscribeWithSelector(
   setTimelinePlaying: (timelinePlaying) => {
     set({ timelinePlaying: Boolean(timelinePlaying) })
   },
-  setPreviewAspectRatio: (previewAspectRatio) => {
-    set({ previewAspectRatio })
-  },
+  setPreviewAspectRatio: (previewAspectRatio) => set((state) => ({
+    previewAspectRatio, persistRevision: state.previewAspectRatio === previewAspectRatio ? state.persistRevision : state.persistRevision + 1,
+  })),
   addTimelineClipAtFrame: (clip, trackType, startFrame) => {
     set((state) => {
       const nextTimeline = addClipAtFrame(state.timeline, clip, trackType, startFrame)

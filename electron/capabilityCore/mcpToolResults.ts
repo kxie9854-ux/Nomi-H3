@@ -8,6 +8,8 @@
 
 import { ACTIVE_JOB_STATUSES } from '../productionRun/productionRunControl'
 import { stripInternalEnrichFields } from './mcpResultEnrich'
+import { safeArtifactValue } from './mcpArtifactSanitize'
+export { sanitizeArtifactResource } from './mcpArtifactSanitize'
 
 export type ResultLocale = 'zh-CN' | 'en'
 
@@ -98,26 +100,6 @@ function truncate(text: string, max = 40): string {
 /** Artifact bodies are already sanitized by the production projection, but this final MCP boundary
  * still drops credential/path-shaped fields if a legacy run contains one. Never expose a local path,
  * provider URL, token, or API key merely because an old snapshot carried it. */
-function safeArtifactValue(value: unknown, key = ''): unknown {
-  if (Array.isArray(value)) return value.map((item) => safeArtifactValue(item))
-  if (value && typeof value === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
-      if (/api.?key|secret|authorization|provider.?url|private.?url|access.?token/i.test(childKey)) continue
-      out[childKey] = safeArtifactValue(childValue, childKey)
-    }
-    return out
-  }
-  if (typeof value === 'string' && /path|file/i.test(key) && (/^(?:\/|[A-Za-z]:[\\/])/.test(value) || value.includes('\\'))) return '[redacted]'
-  if (typeof value === 'string' && /^https?:\/\//i.test(value) && /provider|vendor|source/i.test(key)) return '[redacted]'
-  return value
-}
-
-/** Final redaction seam shared by tool results and the versioned artifact resource reader. */
-export function sanitizeArtifactResource(value: unknown): unknown {
-  return safeArtifactValue(value)
-}
-
 function safeNomiDeepLink(value: string): string {
   if (/^nomi:\/\/project\/[A-Za-z0-9._-]{1,160}(?:\/run\/[A-Za-z0-9._-]{1,160}(?:\?artifact=[A-Za-z0-9._-]{1,160})?|\/node\/[A-Za-z0-9._-]{1,160})?$/.test(value)) return value
   return ''
@@ -673,6 +655,47 @@ export function buildToolOutcome(
         status: status || null,
         nextActions: hint ? [hint.action] : [],
         openInNomi: openInNomi || null,
+      },
+    }
+  }
+
+  if (toolName === 'nomi_group_nodes') {
+    const group = rec(value.group)
+    const grouped = Array.isArray(group.nodeIds) ? group.nodeIds.length : 0
+    const skipped = Array.isArray(value.skipped) ? value.skipped.length : 0
+    const created = value.created === true
+    const name = str(group.name) || str(args.name)
+    const text = group.id
+      ? [
+          `✓ ${created ? L(ctx, '画布分组已创建', 'Canvas group created') : L(ctx, '已复用现有画布分组', 'Existing canvas group reused')} · ${name} · ${grouped} ${L(ctx, '个节点', 'nodes')}`,
+          skipped ? L(ctx, `跳过 ${skipped} 个节点（不存在或分类不同）`, `Skipped ${skipped} node(s) (missing or in another category)`) : null,
+        ].filter(Boolean).join('\n')
+      : `✗ ${L(ctx, '没有创建分组：至少需要 2 个同分类的现有节点', 'No group created: at least 2 existing nodes from the same category are required')}`
+    return {
+      text: text + openLine,
+      outcome: {
+        kind: 'canvas_group', projectId, groupId: str(group.id) || null, name, grouped, skipped, created,
+        nextActions: group.id ? ['open_in_nomi'] : ['fix_node_selection'],
+        openInNomi: projectId ? `nomi://project/${projectId}` : null,
+      },
+    }
+  }
+
+  if (toolName === 'nomi_assemble_timeline') {
+    const arranged = typeof value.arranged === 'number' ? value.arranged : 0
+    const total = typeof value.total === 'number' ? value.total : arranged
+    const skipped = Array.isArray(value.skipped) ? value.skipped.length : 0
+    const text = [
+      `✓ ${L(ctx, '成片已排上时间轴', 'Film laid onto the timeline')} · ${arranged}/${total}`,
+      skipped ? L(ctx, `跳过 ${skipped} 段（已在时间轴上或还不能排）`, `Skipped ${skipped} (already on the timeline or not ready)`) : null,
+      L(ctx, '下一步：在 Nomi 时间轴里预览或导出。', 'Next: preview or export from the Nomi timeline.'),
+    ].filter(Boolean).join('\n') + openLine
+    return {
+      text,
+      outcome: {
+        kind: 'timeline_assemble', projectId, arranged, total, skipped,
+        nextActions: ['open_in_nomi'],
+        openInNomi: openInNomi || (projectId ? `nomi://project/${projectId}` : null),
       },
     }
   }

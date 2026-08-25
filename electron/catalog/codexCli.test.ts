@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync 
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildCodexImagePrompt, buildCodexSpawnEnv, buildCodexSpawnInvocation, candidateCodexBins, describeCodexFailure, extractImagegenUpstreamError, latestGeneratedImageForThread, parseCodexThreadId, queryCodexImageOperation } from "./codexCli";
+import { buildCodexImagePrompt, buildCodexSpawnEnv, buildCodexSpawnInvocation, candidateCodexBins, describeCodexFailure, extractImagegenUpstreamError, latestGeneratedImageForThread, parseCodexThreadId, queryCodexImageOperation, resolveCodexCloseError } from "./codexCli";
+import { CHATGPT_BUNDLED_CODEX } from "../codexAppServer/resolveCodexBin";
 
 const envSnapshot = { ...process.env };
 const tempRoots: string[] = [];
@@ -42,6 +43,8 @@ describe("Codex CLI image bridge", () => {
     // 写死 "/opt/.../codex" 字面量会让社区贡献者在 Windows 上全量测试恒红（PR#55 作者报）。
     expect(candidates).toContain(path.join("/opt/homebrew/bin", "codex"));
     expect(candidates).toContain(path.join("/usr/local/bin", "codex"));
+    expect(candidates).toContain(CHATGPT_BUNDLED_CODEX);
+    expect(candidates).toContain(path.join(root, ".codex", "plugins", ".plugin-appserver", "codex"));
     expect(candidates).toContain(path.join(root, ".local", "bin", "codex"));
     // nvm 各版本 bin 都在候选里，且数值降序（v24 在 v9 前，不许按字典序）
     const nvmIdx = candidates.indexOf(path.join(nvmBin, "codex"));
@@ -115,6 +118,15 @@ describe("Codex CLI image bridge", () => {
     const message = describeCodexFailure(ran, "thread-1");
     expect(message).toContain("Codex 生图调用失败");
     expect(message).toContain("content policy violation");
+  });
+
+  it("spawn ENOENT 后的 close(-2) 保留可行动错误，不被缺 thread 症状覆盖", () => {
+    expect(resolveCodexCloseError(
+      "未找到 Codex CLI（codex）。请确认本机已安装并登录。",
+      { code: -2, stdout: "", stderr: "" },
+      "",
+      "",
+    )).toContain("未找到 Codex CLI");
   });
 
   it("工具真不存在（UNAVAILABLE 哨兵）：指引升级/换模型，不再让用户去加 Nomi 本就传了的 --enable flag", () => {

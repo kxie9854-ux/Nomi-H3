@@ -59,6 +59,16 @@ describe('addClipAtFrame（滑入语义）', () => {
     const next = addClipAtFrame(state, clip('n', 0, 120), 'image', 0)
     expect(next).toBe(state)
   })
+
+  it('同一素材重复入轨会铸新 clip id，并按碰撞模型贴到已有片段后', () => {
+    const state = timeline([clip('same', 0, 120)])
+    const next = addClipAtFrame(state, clip('same', 0, 120), 'video', 0)
+    const clips = videoTrack(next).clips
+    expect(clips).toHaveLength(2)
+    expect(new Set(clips.map((item) => item.id)).size).toBe(2)
+    expect(clips[1].id).toBe('same-2')
+    expect(clips[1].startFrame).toBe(120)
+  })
 })
 
 describe('findAppendFrame（贴尾追加）', () => {

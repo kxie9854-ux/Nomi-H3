@@ -60,6 +60,12 @@ import { RUNNINGHUB_IMAGE_CURATED_MODELS, RUNNINGHUB_IMAGE_CURATED_MAPPINGS } fr
 import { REPLICATE_VENDOR_SEED } from "./replicate";
 import { COMFYUI_VENDOR_SEED, COMFYUI_CURATED_MODELS, COMFYUI_CURATED_MAPPINGS } from "./comfyuiLocal";
 import { CODEX_LOCAL_VENDOR_SEED, CODEX_IMAGE_CURATED_MODELS, CODEX_IMAGE_CURATED_MAPPINGS } from "./codexImages";
+import {
+  AUTODL_ART_VENDOR_SEED,
+  AUTODL_ART_H3_MODEL_SEED,
+  AUTODL_ART_H3_T2V_MAPPING,
+  AUTODL_ART_H3_I2V_MAPPING,
+} from "./autodlArtH3";
 import { VOLCENGINE_IMAGE_MODELS } from "./volcengineImages";
 import { VOLCENGINE_AUDIO_MODELS } from "./volcengineAudios";
 import { VOLCENGINE_SEEDANCE_QUERY_OP, VOLCENGINE_SEEDANCE_STATUS_MAPPING, VOLCENGINE_VIDEO_MODELS } from "./volcengineVideos";
@@ -82,6 +88,35 @@ type CuratedMapping = {
   query?: HttpOperation;
   statusMapping?: Mapping["statusMapping"];
 };
+
+const AUTODL_ART_CURATED_MODELS: CuratedModel[] = [
+  {
+    modelKey: AUTODL_ART_H3_MODEL_SEED.modelKey,
+    labelZh: AUTODL_ART_H3_MODEL_SEED.labelZh,
+    kind: AUTODL_ART_H3_MODEL_SEED.kind,
+    archetypeId: "minimax-h3-autodl-art",
+  },
+];
+const AUTODL_ART_CURATED_MAPPINGS: CuratedMapping[] = [
+  {
+    id: AUTODL_ART_H3_T2V_MAPPING.id,
+    taskKind: AUTODL_ART_H3_T2V_MAPPING.taskKind,
+    modelKey: AUTODL_ART_H3_T2V_MAPPING.modelKey,
+    name: AUTODL_ART_H3_T2V_MAPPING.name,
+    create: AUTODL_ART_H3_T2V_MAPPING.create,
+    query: AUTODL_ART_H3_T2V_MAPPING.query,
+    statusMapping: AUTODL_ART_H3_T2V_MAPPING.statusMapping,
+  },
+  {
+    id: AUTODL_ART_H3_I2V_MAPPING.id,
+    taskKind: AUTODL_ART_H3_I2V_MAPPING.taskKind,
+    modelKey: AUTODL_ART_H3_I2V_MAPPING.modelKey,
+    name: AUTODL_ART_H3_I2V_MAPPING.name,
+    create: AUTODL_ART_H3_I2V_MAPPING.create,
+    query: AUTODL_ART_H3_I2V_MAPPING.query,
+    statusMapping: AUTODL_ART_H3_I2V_MAPPING.statusMapping,
+  },
+];
 
 /** 稳定 id：按 (vendor, taskKind, model) 固定，便于幂等与排查。 */
 const SEEDANCE_MAPPING_ID = "seed-kie-seedance2-image_to_video";
@@ -475,6 +510,7 @@ export function applyBuiltinSeeds(state: CatalogState, now: string): { state: Ca
   if (seedVendor(vendors, REPLICATE_VENDOR_SEED, now)) changed = true; // Replicate（元素拆解 qwen-image-layered，按量付费）
   if (seedVendor(vendors, COMFYUI_VENDOR_SEED, now)) changed = true; // 本地 ComfyUI（无鉴权本地后端，默认关、用户显式启用）
   if (seedVendor(vendors, CODEX_LOCAL_VENDOR_SEED, now)) changed = true; // Codex 本地生图（实验，默认关）
+  if (seedVendor(vendors, AUTODL_ART_VENDOR_SEED, now)) changed = true;
 
   // 退役 curated 记录清理（变体合并迁移：删 Seedance 旧变体模型 + mapping 孤儿，picker 收成 1 项）。
   if (pruneRetiredModels(models, APIMART_VENDOR_SEED.key, RETIRED_APIMART_VIDEO_MODEL_KEYS)) changed = true;
@@ -500,6 +536,7 @@ export function applyBuiltinSeeds(state: CatalogState, now: string): { state: Ca
   if (reconcileModels(models, RUNNINGHUB_VENDOR_SEED.key, RUNNINGHUB_IMAGE_CURATED_MODELS, now)) changed = true;
   if (reconcileModels(models, COMFYUI_VENDOR_SEED.key, COMFYUI_CURATED_MODELS, now)) changed = true;
   if (reconcileModels(models, CODEX_LOCAL_VENDOR_SEED.key, CODEX_IMAGE_CURATED_MODELS, now)) changed = true;
+  if (reconcileModels(models, AUTODL_ART_VENDOR_SEED.key, AUTODL_ART_CURATED_MODELS, now)) changed = true;
 
   // kie 历史包袱 repair：把视频形状的坏 (kie, text_to_image) 替换成正确的 GPT Image 2 文生图契约
   // （旧 onboarding 抽错留下的；契约见 kieGptImage2.ts 直连实测确认）。apimart 无此历史，不需要。
@@ -531,6 +568,7 @@ export function applyBuiltinSeeds(state: CatalogState, now: string): { state: Ca
   if (reconcileMappings(mappings, RUNNINGHUB_VENDOR_SEED.key, RUNNINGHUB_IMAGE_CURATED_MAPPINGS, now)) changed = true;
   if (reconcileMappings(mappings, COMFYUI_VENDOR_SEED.key, COMFYUI_CURATED_MAPPINGS, now)) changed = true;
   if (reconcileMappings(mappings, CODEX_LOCAL_VENDOR_SEED.key, CODEX_IMAGE_CURATED_MAPPINGS, now)) changed = true;
+  if (reconcileMappings(mappings, AUTODL_ART_VENDOR_SEED.key, AUTODL_ART_CURATED_MAPPINGS, now)) changed = true;
 
   if (!changed) return { state, changed: false };
   return { state: { ...state, vendors, models, mappings }, changed: true };

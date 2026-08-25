@@ -12,6 +12,7 @@
 // UI 建的节点**字段级等价**（meta/categoryId/shotIndex/size 全齐），不再是缺字段的「二等公民」。
 import { randomUUID } from 'node:crypto'
 import { ANCHOR_META_KEYS, isVisualAnchorKind } from './anchorBible'
+import { plainTextToTiptapDoc } from './plainTextDoc'
 import { buildCanvasNodes, type CanvasNodeFactorySpec, type NodeFactoryDeps } from './canvasNodeFactory'
 import { layoutBatchWith, type NodeBox } from './canvasNodeLayout'
 import {
@@ -26,7 +27,7 @@ import {
 export type CanvasSnapshot = {
   nodes: CanvasNode[]
   edges: CanvasEdge[]
-  groups?: unknown[]
+  groups?: CanvasGroup[]
   selectedNodeIds?: string[]
 }
 
@@ -50,6 +51,17 @@ export type CanvasEdge = {
   target: string
   mode?: string
   order?: number
+}
+
+/** 与 renderer NodeGroup 同形的可持久化分组；能力核只操作分组所需字段，其余声明原样保留。 */
+export type CanvasGroup = {
+  id: string
+  name: string
+  categoryId: string
+  nodeIds: string[]
+  createdAt: number
+  updatedAt: number
+  [key: string]: unknown
 }
 
 /** 建节点入参——语义字段 + 可选模型身份；几何/分类/镜号由共用工厂补齐（与 UI 同）。 */
@@ -96,7 +108,7 @@ function cloneSnapshot(snapshot: CanvasSnapshot): CanvasSnapshot {
   return {
     nodes: snapshot.nodes.map((node) => ({ ...node })),
     edges: snapshot.edges.map((edge) => ({ ...edge })),
-    ...(snapshot.groups ? { groups: snapshot.groups } : {}),
+    ...(snapshot.groups ? { groups: snapshot.groups.map((group) => ({ ...group, nodeIds: [...group.nodeIds] })) } : {}),
     ...(snapshot.selectedNodeIds ? { selectedNodeIds: [...snapshot.selectedNodeIds] } : {}),
   }
 }
@@ -115,7 +127,22 @@ export function normalizeSnapshot(value: unknown): CanvasSnapshot {
   return {
     nodes: nodes.filter((node) => node && typeof node.id === 'string'),
     edges: edges.filter((edge) => edge && typeof edge.id === 'string' && typeof edge.source === 'string' && typeof edge.target === 'string'),
-    groups: Array.isArray(raw.groups) ? (raw.groups as unknown[]) : [],
+    groups: Array.isArray(raw.groups)
+      ? raw.groups.flatMap((candidate) => {
+          if (!candidate || typeof candidate !== 'object') return []
+          const group = candidate as Record<string, unknown>
+          if (typeof group.id !== 'string' || typeof group.name !== 'string' || !Array.isArray(group.nodeIds)) return []
+          return [{
+            ...group,
+            id: group.id,
+            name: group.name,
+            categoryId: typeof group.categoryId === 'string' && group.categoryId ? group.categoryId : 'shots',
+            nodeIds: group.nodeIds.filter((id): id is string => typeof id === 'string'),
+            createdAt: typeof group.createdAt === 'number' ? group.createdAt : 0,
+            updatedAt: typeof group.updatedAt === 'number' ? group.updatedAt : 0,
+          } as CanvasGroup]
+        })
+      : [],
     selectedNodeIds: Array.isArray(raw.selectedNodeIds) ? (raw.selectedNodeIds as string[]) : [],
   }
 }
@@ -124,6 +151,7 @@ export function normalizeSnapshot(value: unknown): CanvasSnapshot {
 export function readCanvas(snapshot: CanvasSnapshot): {
   nodes: Array<{ id: string; kind: string; title: string; prompt: string; status: string; position: { x: number; y: number }; hasResult: boolean }>
   edges: Array<{ id: string; source: string; target: string; mode: string }>
+  groups: Array<{ id: string; name: string; categoryId: string; nodeIds: string[] }>
 } {
   return {
     nodes: snapshot.nodes.map((node) => ({
@@ -141,7 +169,76 @@ export function readCanvas(snapshot: CanvasSnapshot): {
       target: edge.target,
       mode: edge.mode || 'reference',
     })),
+    groups: (snapshot.groups || []).map((group) => ({
+      id: group.id,
+      name: group.name,
+      categoryId: group.categoryId,
+      nodeIds: [...group.nodeIds],
+    })),
   }
+}
+
+export type GroupNodesResult = {
+  snapshot: CanvasSnapshot
+  group: CanvasGroup | null
+  created: boolean
+  skipped: Array<{ nodeId: string; reason: string }>
+}
+
+/**
+ * 把一批既有节点收进一个组。分组不能跨分类；分类从第一个存在的节点推导，调用方不用理解内部 categoryId。
+ * 同名 + 同成员集合的重复请求直接复用原组；节点已在别组时按 UI 语义“抢入”新组，并同步 node.groupId。
+ */
+export function groupNodes(snapshot: CanvasSnapshot, nodeIds: string[], name: string): GroupNodesResult {
+  const next = cloneSnapshot(snapshot)
+  const requested = Array.from(new Set(nodeIds.map((id) => String(id || '').trim()).filter(Boolean)))
+  const nodeById = new Map(next.nodes.map((node) => [node.id, node]))
+  const skipped: GroupNodesResult['skipped'] = []
+  const existing = requested.flatMap((nodeId) => {
+    const node = nodeById.get(nodeId)
+    if (!node) {
+      skipped.push({ nodeId, reason: '节点不存在' })
+      return []
+    }
+    return [node]
+  })
+  const categoryId = existing[0]?.categoryId || 'shots'
+  const members = existing.filter((node) => {
+    if ((node.categoryId || 'shots') === categoryId) return true
+    skipped.push({ nodeId: node.id, reason: '节点分类不同' })
+    return false
+  })
+  const memberIds = members.map((node) => node.id)
+  const normalizedName = String(name || '').trim()
+  if (!normalizedName || memberIds.length < 2) return { snapshot, group: null, created: false, skipped }
+
+  const memberSet = new Set(memberIds)
+  const reusable = (next.groups || []).find((group) => (
+    group.name.trim() === normalizedName
+    && group.categoryId === categoryId
+    && group.nodeIds.length === memberSet.size
+    && group.nodeIds.every((id) => memberSet.has(id))
+  ))
+  if (reusable) return { snapshot, group: reusable, created: false, skipped }
+
+  const now = Date.now()
+  const group: CanvasGroup = {
+    id: genId(`group-${categoryId}`),
+    name: normalizedName,
+    categoryId,
+    nodeIds: memberIds,
+    createdAt: now,
+    updatedAt: now,
+  }
+  next.groups = (next.groups || []).map((candidate) => ({
+    ...candidate,
+    nodeIds: candidate.nodeIds.filter((id) => !memberSet.has(id)),
+    ...(candidate.nodeIds.some((id) => memberSet.has(id)) ? { updatedAt: now } : {}),
+  }))
+  next.groups.push(group)
+  next.nodes = next.nodes.map((node) => memberSet.has(node.id) ? { ...node, groupId: group.id } : node)
+  next.selectedNodeIds = memberIds
+  return { snapshot: next, group, created: true, skipped }
 }
 
 // 能力核侧的工厂依赖注入：几何/分类/镜号全走 nodeKindDomain 纯表，与渲染层注入 src 真函数同一份工厂逻辑。
@@ -206,7 +303,11 @@ export function addNodes(
     const withAnchorMark = isVisualAnchorKind(node.kind)
       ? { ...node, meta: { ...((node as { meta?: Record<string, unknown> }).meta || {}), [ANCHOR_META_KEYS.referenceSheet]: true } }
       : node
-    next.nodes.push(withAnchorMark as unknown as CanvasNode)
+    const prompt = typeof withAnchorMark.prompt === 'string' ? withAnchorMark.prompt : ''
+    const withTextBody = withAnchorMark.kind === 'text' && prompt.trim()
+      ? { ...withAnchorMark, contentJson: plainTextToTiptapDoc(prompt) }
+      : withAnchorMark
+    next.nodes.push(withTextBody as unknown as CanvasNode)
   }
   return { snapshot: next, ids: built.map((node) => node.id) }
 }
@@ -278,6 +379,10 @@ export function deleteNodes(
   const next = cloneSnapshot(snapshot)
   next.nodes = next.nodes.filter((node) => !targetSet.has(node.id))
   next.edges = next.edges.filter((edge) => !targetSet.has(edge.source) && !targetSet.has(edge.target))
+  next.groups = (next.groups || []).map((group) => ({
+    ...group,
+    nodeIds: group.nodeIds.filter((id) => !targetSet.has(id)),
+  }))
   if (next.selectedNodeIds) next.selectedNodeIds = next.selectedNodeIds.filter((id) => !targetSet.has(id))
   return { snapshot: next, deleted }
 }

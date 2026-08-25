@@ -568,6 +568,21 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     updateComfyWorkflow: (payload: { modelKey: string; text: string; binding: unknown; labelZh: string; enumOptions?: unknown; vendorKey?: string; uiWorkflowText?: string }) =>
       invokeSync("nomi:model-catalog:comfyui:update-workflow", payload),
   },
+  codex: {
+    status: () => ipcRenderer.invoke("nomi:codex:status"),
+    ensure: (cwd?: string) => ipcRenderer.invoke("nomi:codex:ensure", cwd),
+    login: () => ipcRenderer.invoke("nomi:codex:login"),
+    send: (payload: unknown) => ipcRenderer.invoke("nomi:codex:send", payload),
+    readHistory: (projectId: string) => ipcRenderer.invoke("nomi:codex:read-history", projectId),
+    interrupt: () => ipcRenderer.invoke("nomi:codex:interrupt"),
+    respondElicitation: (requestId: string, confirmed: boolean) =>
+      ipcRenderer.invoke("nomi:codex:respond-elicitation", requestId, confirmed),
+    onEvent: (cb: (event: unknown) => void) => {
+      const listener = (_: unknown, event: unknown) => cb(event);
+      ipcRenderer.on("nomi:codex:event", listener);
+      return () => ipcRenderer.removeListener("nomi:codex:event", listener);
+    },
+  },
   skill: {
     list: () => invokeSync("nomi:skill:list"),
     exportPackage: (dirName: string) => invokeSync("nomi:skill:export", dirName),

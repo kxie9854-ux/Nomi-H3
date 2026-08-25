@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-22",
+  "source": "https://www.autodl.art/large-model/comfyui",
+  "list_url": "POST https://www.autodl.art/api/v1/comfyui/workflows",
+  "detail_url": "GET https://www.autodl.art/api/v1/comfyui/workflows/{uuid}",
+  "submit_url": "POST https://www.autodl.art/api/v1/comfyui/comfyui_workflow/{uuid}",
+  "status_url": "GET https://www.autodl.art/api/v1/comfyui/comfyui_workflow/result/{task_id}",
+  "auth": {
+    "header": "Authorization",
+    "token_page": "https://autodl.art/large-model/tokens",
+    "token_group": "ComfyUI"
+  },
+  "status_values": {
+    "queued": ["QUEUED"],
+    "running": ["RUNNING"],
+    "succeeded": ["SUCCESS"],
+    "failed": ["FAILED"]
+  },
+  "media": {
+    "transport": "public_url",
+    "image_types": ["image/jpeg", "image/png", "image/webp"],
+    "audio_types": ["audio/mpeg", "audio/wav", "video/mp4", "audio/flac"]
+  },
+  "resolution_map": {
+    "9:16": { "480p": "480p竖", "768p": "768p竖", "1080p": "1080p竖" },
+    "16:9": { "480p": "480p横", "768p": "768p横", "1080p": "1080p横" },
+    "1:1": { "480p": "480p(1:1)", "768p": "768p(1:1)", "1080p": "1080p(1:1)" }
+  },
+  "modes": {
+    "t2va": {
+      "status": "captured",
+      "workflow_id": "minimax_h3_lightx2v_no_pic",
+      "name": "H3文生视频",
+      "duration": { "min": 1, "max": 15, "default": 5 },
+      "resolutions": ["480p竖", "768p竖", "480p横", "768p横"],
+      "required": ["prompt"]
+    },
+    "i2va": {
+      "status": "unavailable_on_autodl_art",
+      "workflow_id": null,
+      "reason": "No first-frame-only workflow. minimax_h3_lightx2v requires last_frame. Lip-sync workflow is not I2VA."
+    },
+    "fl2va": {
+      "status": "captured",
+      "workflow_id": "minimax_h3_lightx2v",
+      "name": "H3首尾帧生成视频",
+      "duration": { "min": 1, "max": 15, "default": 5 },
+      "resolutions": ["480p竖", "768p竖", "480p横", "768p横"],
+      "required": ["prompt", "first_frame", "last_frame"]
+    },
+    "ref2va": {
+      "status": "captured_no_video_refs",
+      "images_15s": {
+        "workflow_id": "minimax_h3_lightx2v_v5_15s",
+        "name": "H3多图生视频15秒",
+        "duration": { "min": 1, "max": 15, "default": 5 },
+        "resolutions": ["480p竖", "768p竖", "480p横", "768p横", "480p(1:1)", "768p(1:1)"],
+        "required": ["prompt", "ref_image_0"],
+        "images": { "min": 1, "max": 9 }
+      },
+      "images_1080p": {
+        "workflow_id": "minimax_h3_lightx2v_v5",
+        "name": "H3多图参考生视频",
+        "duration": { "min": 1, "max": 10, "default": 5 },
+        "note": "Use only when 1080p is required; max 10s."
+      },
+      "images_audio_15s": {
+        "workflow_id": "minimax_h3_image_audio_to_video_v2_15s",
+        "name": "H3多图多音频生视频15秒",
+        "duration": { "min": 1, "max": 15, "default": 5 },
+        "images": { "min": 0, "max": 9 },
+        "audios": { "min": 0, "max": 3 },
+        "required": ["prompt"]
+      },
+      "images_audio_1080p": {
+        "workflow_id": "minimax_h3_image_audio_to_video_v2",
+        "name": "H3多图多音频生视频",
+        "duration": { "min": 1, "max": 10, "default": 5 },
+        "note": "Use only when 1080p is required; max 10s."
+      },
+      "video_refs": "unavailable"
+    },
+    "lip_sync": {
+      "status": "captured_not_in_v1_modes",
+      "workflow_id": "minimax_h3_image_audio_to_video",
+      "name": "H3图生视频-音频同步(自动对口型)",
+      "required": ["ref_image_0", "ref_audio_0"],
+      "has_prompt": false
+    }
+  },
+  "raw_schemas": "catalog/autodl-art-h3.raw.json"
+}

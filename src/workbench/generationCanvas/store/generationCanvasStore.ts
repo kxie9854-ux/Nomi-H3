@@ -43,6 +43,7 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
   generationAiDraft: '',
   generationAiMessages: [],
   generationAiCollapsed: true,
+  generationDirector: 'codex',
   canUndo: false,
   canRedo: false,
   hasClipboard: false,
@@ -65,6 +66,9 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
   },
   setGenerationAiCollapsed: (generationAiCollapsed) => {
     set({ generationAiCollapsed })
+  },
+  setGenerationDirector: (generationDirector) => {
+    set({ generationDirector })
   },
   resetGenerationAiConversation: () => {
     set({ generationAiDraft: '', generationAiMessages: [] })

@@ -1,3 +1,4 @@
+import type { DirectorHistory } from '../../electron/codexAppServer/directorHistory'
 import type { ExportJobEvent, ExportJobSnapshot } from '../../electron/export/exportJobManager'
 import type { WorkspaceFileListResult } from '../../electron/workspace/workspaceFileIndex'
 import type { ProviderKind } from './providerKind'
@@ -724,6 +725,17 @@ export type DesktopBridge = DesktopMediaBridge & {
     exportPackage: (dirName: string) => unknown
     importPackage: (payload: unknown) => unknown
     deleteByDir: (dirName: string) => unknown
+  }
+  /** 内嵌 Codex app-server（unix socket）。付费生成仍走 Nomi 主进程门。 */
+  codex?: {
+    status: () => Promise<{ ready: boolean; account: { type?: string; email?: string | null; planType?: string | null } | null }>
+    ensure: (cwd?: string) => Promise<{ account: { type?: string; email?: string | null; planType?: string | null } | null }>
+    login: () => Promise<{ authUrl?: string }>
+    send: (payload: { text: string; cwd?: string; projectId?: string; canvasContext?: string }) => Promise<{ ok: boolean }>
+    readHistory: (projectId: string) => Promise<DirectorHistory>
+    interrupt: () => Promise<{ ok: boolean }>
+    respondElicitation: (requestId: string, confirmed: boolean) => Promise<{ ok: boolean }>
+    onEvent: (cb: (event: unknown) => void) => () => void
   }
   /** 即梦会员（dreamina CLI）：设备码登录/账户检测/安装（可选——老 preload 无此口）。 */
   dreamina?: {

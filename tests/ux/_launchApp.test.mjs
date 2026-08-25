@@ -1,7 +1,7 @@
 // 钉住启动器的核心不变量（替掉原 helpers/electronFixture.test.mjs，2026-08-11 收敛）。
 // 这条不变量就是本次修复的根因：漏掉这两个 env，窗口起不来且**毫无提示**，只会干等到超时。
 import { describe, expect, test } from 'vitest'
-import { buildNomiLaunchEnv, withLinuxNoSandbox } from './_launchApp.mjs'
+import { buildNomiLaunchEnv, closeNomiApp, withLinuxNoSandbox } from './_launchApp.mjs'
 
 const dirs = { userDataDir: '/tmp/case/user-data', settingsDir: '/tmp/case/settings', projectsDir: '/tmp/case/projects' }
 
@@ -44,5 +44,27 @@ describe('withLinuxNoSandbox', () => {
   test('non-Linux spawns keep their original arguments', () => {
     expect(withLinuxNoSandbox(['.', '--disable-gpu'], 'darwin')).toEqual(['.', '--disable-gpu'])
     expect(withLinuxNoSandbox(['.', '--disable-gpu'], 'win32')).toEqual(['.', '--disable-gpu'])
+  })
+})
+
+describe('closeNomiApp', () => {
+  test('优雅关闭卡住时只强制终止本次启动的 Electron child', async () => {
+    let signal = ''
+    const app = {
+      close: () => new Promise(() => undefined),
+      process: () => ({ kill: (nextSignal) => { signal = nextSignal } }),
+    }
+    await closeNomiApp(app, { timeoutMs: 1 })
+    expect(signal).toBe('SIGKILL')
+  })
+
+  test('优雅关闭成功时不碰进程', async () => {
+    let killed = false
+    const app = {
+      close: async () => undefined,
+      process: () => ({ kill: () => { killed = true } }),
+    }
+    await closeNomiApp(app, { timeoutMs: 1 })
+    expect(killed).toBe(false)
   })
 })

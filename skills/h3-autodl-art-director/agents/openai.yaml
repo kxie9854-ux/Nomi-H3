@@ -1,0 +1,4 @@
+interface:
+  display_name: "Nomi-H3 film director"
+  short_description: "Turn a simple idea into a finished H3 film on the Nomi canvas, one gated step at a time"
+  default_prompt: "Use $h3-autodl-art-director to turn this idea into a film on the Nomi canvas. Confirm aspect, duration, audio, and 1-shot vs multi-shot before generating."

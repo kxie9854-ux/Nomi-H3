@@ -131,6 +131,18 @@ describe('normalizeTimeline — 归一化与清洗', () => {
     expect(out.textClips.map((c) => c.text).sort()).toEqual(['乙', '甲'])
   })
 
+  it('重复 id 的媒体 clip 保留各段但重铸成唯一 id，避免选择串改与 React key 冲突', () => {
+    const input = { tracks: [{ id: 'videoTrack', type: 'video', clips: [
+      { id: 'clip-same', sourceNodeId: 'n', type: 'video', startFrame: 0, endFrame: 30 },
+      { id: 'clip-same', sourceNodeId: 'n', type: 'video', startFrame: 30, endFrame: 60 },
+    ] }] }
+    const clips = videoTrackClips(normalizeTimeline(input))
+    expect(clips).toHaveLength(2)
+    expect(clips.map((clip) => clip.id)[0]).toBe('clip-same')
+    expect(new Set(clips.map((clip) => clip.id)).size).toBe(2)
+    expect(clips.map((clip) => clip.startFrame)).toEqual([0, 30])
+  })
+
   it('丢弃缺少 id 或 sourceNodeId 的 clip', () => {
     const input = { tracks: [{ id: 'videoTrack', type: 'video', clips: [
       { sourceNodeId: 'n', type: 'video', startFrame: 0, endFrame: 10 },     // 缺 id

@@ -38,6 +38,7 @@ export function releaseWorkbenchProjectRuntimeState(): void {
     generationAiDraft: '',
     generationAiMessages: [],
     generationAiCollapsed: true,
+    generationDirector: 'codex',
     canUndo: false,
     canRedo: false,
     hasClipboard: false,

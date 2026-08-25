@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nomi Codex 导演 · 项目恢复样张</title>
+  <style>
+    :root {
+      --bg: oklch(.985 .003 90); --paper: oklch(1 0 0); --ink: oklch(.22 .01 80);
+      --ink-80: oklch(.32 .01 80); --ink-60: oklch(.50 .01 80); --ink-40: oklch(.68 .01 80);
+      --ink-20: oklch(.88 .005 80); --ink-10: oklch(.94 .003 80); --ink-05: oklch(.97 .003 80);
+      --line: oklch(.91 .004 80); --line-soft: oklch(.95 .003 80);
+      --accent: oklch(.55 .13 250); --accent-soft: color-mix(in oklch, var(--accent) 12%, var(--paper));
+      --success: oklch(.67 .13 150); --canvas: oklch(.19 .006 80); --canvas-line: oklch(.31 .008 80);
+    }
+    [data-theme="dark"] {
+      --bg: oklch(.16 .006 80); --paper: oklch(.19 .006 80); --ink: oklch(.93 .004 80);
+      --ink-80: oklch(.84 .006 80); --ink-60: oklch(.67 .006 80); --ink-40: oklch(.50 .006 80);
+      --ink-20: oklch(.35 .006 80); --ink-10: oklch(.26 .006 80); --ink-05: oklch(.22 .006 80);
+      --line: oklch(.31 .006 80); --line-soft: oklch(.26 .006 80);
+      --accent: oklch(.72 .12 250); --success: oklch(.73 .12 150); --canvas: oklch(.13 .004 80); --canvas-line: oklch(.25 .006 80);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 1120px; background: var(--bg); color: var(--ink); font: 13px/1.5 Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+    button { color: inherit; font: inherit; }
+    .sample-bar { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--paper); }
+    .sample-bar strong { margin-right: auto; font-size: 13px; }
+    .sample-bar button { height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); cursor: pointer; }
+    .sample-bar button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+    .app { height: calc(100vh - 44px); min-height: 680px; display: grid; grid-template-rows: 48px minmax(0, 1fr); background: var(--canvas); }
+    .appbar { display: flex; align-items: center; gap: 14px; padding: 0 14px; color: var(--ink-80); background: var(--paper); border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+    .logo { width: 24px; height: 24px; border-radius: 6px; background: oklch(.22 .01 80); color: white; display: grid; place-items: center; font-weight: 700; }
+    .crumb { padding: 4px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink-60); }
+    .steps { margin: 0 auto; display: flex; gap: 3px; padding: 3px; border-radius: 999px; background: var(--ink-05); }
+    .steps span { padding: 4px 13px; border-radius: 999px; color: var(--ink-40); }
+    .steps .active { color: var(--ink); background: var(--paper); box-shadow: 0 1px 4px color-mix(in oklch, var(--ink) 12%, transparent); }
+    .workspace { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 496px; }
+    .canvas { position: relative; overflow: hidden; background-color: var(--canvas); background-image: radial-gradient(var(--canvas-line) 1px, transparent 1px); background-size: 16px 16px; }
+    .group { position: absolute; right: 32px; width: 360px; height: 238px; border: 1px solid color-mix(in oklch, var(--accent) 50%, transparent); border-radius: 10px; background: color-mix(in oklch, var(--accent) 7%, transparent); }
+    .group.one { top: 56px; } .group.two { top: 326px; }
+    .group-label { position: absolute; top: 9px; left: 9px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; }
+    .node { position: absolute; width: 144px; height: 82px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); box-shadow: 0 4px 14px color-mix(in oklch, black 16%, transparent); }
+    .node.a { left: 20px; top: 48px; } .node.b { right: 20px; top: 48px; } .node.c { left: 20px; bottom: 18px; } .node.d { right: 20px; bottom: 18px; }
+    .node .shot { height: 100%; background: linear-gradient(135deg, oklch(.63 .09 75), oklch(.29 .05 145)); position: relative; }
+    .node .shot::after { content: "橘猫 · 晨光花园"; position: absolute; inset: auto 0 0; padding: 5px 7px; color: white; font-size: 10px; background: linear-gradient(transparent, color-mix(in oklch, black 65%, transparent)); }
+    .node.text { padding: 10px; color: var(--ink-60); font-size: 10px; }
+    .node.text b { display: block; margin-bottom: 4px; color: var(--ink-80); }
+    .timeline-chip { position: absolute; right: 28px; bottom: 18px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); color: var(--ink-60); }
+    .director { min-height: 0; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto; border-left: 1px solid var(--line); background: var(--paper); }
+    .head { height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+    .head .ai { font-weight: 600; } .head .account { min-width: 0; flex: 1; color: var(--ink-40); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ghost-btn { height: 28px; padding: 0 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); font-size: 12px; }
+    .close { border: 0; background: transparent; color: var(--ink-40); font-size: 18px; }
+    .stage { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 38px; padding: 7px 12px; border-bottom: 1px solid var(--line); color: var(--ink-40); font-size: 12px; }
+    .stage .current { color: var(--ink); font-weight: 600; }
+    .resume { margin: 10px 12px 0; padding: 10px 11px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--ink-05); }
+    .resume-head { display: flex; align-items: center; gap: 7px; color: var(--ink-80); font-weight: 600; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
+    .resume-meta { margin-top: 3px; color: var(--ink-60); font-size: 12px; }
+    .resume-next { margin-top: 5px; color: var(--ink-80); font-size: 12px; }
+    .history { min-height: 0; overflow: auto; padding: 10px 12px 18px; }
+    .older { display: flex; align-items: center; gap: 8px; margin: 2px 0 12px; color: var(--ink-40); font-size: 11px; }
+    .older::before, .older::after { content: ""; flex: 1; height: 1px; background: var(--line-soft); }
+    .message { margin-bottom: 14px; white-space: pre-wrap; }
+    .who { margin-bottom: 3px; color: var(--ink-40); font-size: 11px; }
+    .message.user { margin-left: 28px; padding: 8px 10px; border-left: 2px solid var(--accent); border-radius: 0 8px 8px 0; background: var(--ink-05); color: var(--ink-80); }
+    .message.assistant { color: var(--ink-80); }
+    .choice { display: block; width: 100%; margin-top: 7px; padding: 7px 9px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+    .choice.primary { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+    .error-state, .loading-state { margin: 12px; padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--ink-05); color: var(--ink-60); }
+    .spinner { display: inline-grid; width: 18px; height: 18px; margin-right: 7px; place-items: center; border-radius: 5px; background: oklch(.22 .01 80); color: white; animation: spin 1.3s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .composer { padding: 12px; border-top: 1px solid var(--line); }
+    .input { display: flex; align-items: flex-end; gap: 8px; }
+    textarea { width: 100%; min-height: 42px; max-height: 92px; resize: none; padding: 10px 11px; border: 1px solid var(--line); border-radius: 10px; outline: none; background: var(--paper); color: var(--ink); font: inherit; }
+    textarea:focus { border-color: var(--accent); }
+    .send { width: 34px; height: 34px; flex: 0 0 auto; border: 0; border-radius: 999px; background: var(--ink); color: var(--paper); }
+    .note { position: fixed; left: 16px; bottom: 12px; max-width: 560px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink-60); box-shadow: 0 8px 24px color-mix(in oklch, black 14%, transparent); font-size: 12px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body data-theme="dark">
+  <div class="sample-bar">
+    <strong>项目级导演恢复 · 真实布局样张</strong>
+    <button data-state="ready" class="active">恢复成功</button>
+    <button data-state="loading">恢复中</button>
+    <button data-state="error">恢复失败</button>
+    <button id="theme">切到浅色</button>
+  </div>
+  <main class="app">
+    <header class="appbar">
+      <div class="brand"><span class="logo">N</span><span>Nomi</span></div>
+      <div class="crumb">项目库　›　未命名项目 08/25 00:09</div>
+      <div class="steps"><span>创作</span><span class="active">生成</span><span>预览</span></div>
+      <span>任务　浏览器　设置</span>
+    </header>
+    <div class="workspace">
+      <section class="canvas" aria-label="生成画布">
+        <div class="group one"><span class="group-label">S01｜发现　4</span><div class="node text a"><b>S01｜发现｜5 秒</b>猫发现蓝蝶，压低身体并抬起前爪。</div><div class="node b"><div class="shot"></div></div><div class="node c"><div class="shot"></div></div><div class="node d"><div class="shot"></div></div></div>
+        <div class="group two"><span class="group-label">S02｜追逐　4</span><div class="node text a"><b>S02｜追逐｜5 秒</b>猫向右追逐，最后停下仰望光束。</div><div class="node b"><div class="shot"></div></div><div class="node c"><div class="shot"></div></div><div class="node d"><div class="shot"></div></div></div>
+        <div class="timeline-chip">时间轴　2 段 · 0:10</div>
+      </section>
+      <aside class="director">
+        <header class="head"><span class="logo" style="width:18px;height:18px;border-radius:5px;font-size:10px">N</span><span class="ai">Nomi Codex</span><span class="account">kxie9854@gmail.com</span><button class="ghost-btn">Nomi 助手</button><button class="close">×</button></header>
+        <nav class="stage"><span>简报</span><span>·</span><span>静帧</span><span>·</span><span>确认</span><span>·</span><span>出视频</span><span>·</span><span class="current">成片</span></nav>
+
+        <section id="readyResume" class="resume">
+          <div class="resume-head"><span class="dot"></span><span>已恢复这个项目</span></div>
+          <div class="resume-meta">2 个镜头已成片 · 时间轴 0:10 · 9:16</div>
+          <div class="resume-next">接下来：做最终审片，满意后即可导出。</div>
+        </section>
+        <section id="loadingResume" class="loading-state" hidden><span class="spinner">N</span>正在恢复这个项目的导演记录…</section>
+        <section id="errorResume" class="error-state" hidden>旧对话暂时没有取回。你仍可直接发送新指令继续制作。</section>
+
+        <div id="readyHistory" class="history">
+          <div class="older">较早对话已省略</div>
+          <div class="message user"><div class="who">你</div>确认 9:16、10 秒、两镜。先生成静帧，确认后再跑 H3。</div>
+          <div class="message assistant"><div class="who">Codex</div>两镜首尾静帧已经落到画布，并按 S01 / S02 分组。角色、光位与运动方向已对齐。建议静帧确认后先生成 S01。</div>
+          <div class="message user"><div class="who">你</div>静帧没问题，生成 S01</div>
+          <div class="message assistant"><div class="who">Codex</div>S01 和 S02 已通过审片，并按镜序排入 9:16 时间轴。成片时长 10.3 秒。</div>
+        </div>
+        <footer class="composer"><div class="input"><textarea placeholder="例如：给这支片补一段轻柔配乐"></textarea><button class="send">↑</button></div></footer>
+      </aside>
+    </div>
+  </main>
+  <div class="note"><strong>样张只增加一件可见能力：</strong>打开项目即恢复真实 thread 历史，并用画布/时间轴派生一条紧凑“做到哪、下一步是什么”。不恢复旧授权、不自动续跑任务、不增加新常驻按钮。</div>
+  <script>
+    const body = document.body;
+    const buttons = [...document.querySelectorAll('[data-state]')];
+    const readyResume = document.querySelector('#readyResume');
+    const loadingResume = document.querySelector('#loadingResume');
+    const errorResume = document.querySelector('#errorResume');
+    const readyHistory = document.querySelector('#readyHistory');
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      buttons.forEach((item) => item.classList.toggle('active', item === button));
+      const state = button.dataset.state;
+      readyResume.hidden = state !== 'ready'; loadingResume.hidden = state !== 'loading'; errorResume.hidden = state !== 'error'; readyHistory.hidden = state !== 'ready';
+    }));
+    document.querySelector('#theme').addEventListener('click', (event) => {
+      const dark = body.dataset.theme === 'dark'; body.dataset.theme = dark ? 'light' : 'dark'; event.currentTarget.textContent = dark ? '切到深色' : '切到浅色';
+    });
+  </script>
+</body>
+</html>

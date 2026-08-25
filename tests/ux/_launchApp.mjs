@@ -238,10 +238,14 @@ function diagnose(headline, name, error, logTail) {
  * 收尾。electron teardown 在部分环境会 hang（app.close() 永不 resolve），串跑时会把整条卡死，
  * 故给 3s 兜底：尽量清干净，但保证一定往下走。
  */
-export async function closeNomiApp(app) {
+export async function closeNomiApp(app, { timeoutMs = 3000 } = {}) {
   if (!app) return
+  let closed = false
   await Promise.race([
-    app.close().catch(() => undefined),
-    new Promise((resolve) => setTimeout(resolve, 3000)),
+    app.close().catch(() => undefined).finally(() => { closed = true }),
+    new Promise((resolve) => setTimeout(resolve, timeoutMs)),
   ])
+  // Promise.race 本身不会关闭 Playwright/CDP 持有的子进程句柄。只终止这个
+  // launchNomiApp 创建的精确 Electron child；否则脚本虽然越过 3s，Node 仍永不退出。
+  if (!closed) app.process?.().kill?.('SIGKILL')
 }

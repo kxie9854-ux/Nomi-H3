@@ -4,7 +4,9 @@ import {
   __setDeferredNodeMediaLimitForTests,
   isDeferredVideoFrameReady,
   observeDeferredNodeMediaVisibility,
+  replaceDeferredNodeVideoElement,
   requestDeferredNodeMediaSlot,
+  scheduleDeferredNodeMediaLoadTimeout,
 } from './deferredNodeMediaQueue'
 
 describe('deferred node media queue', () => {
@@ -110,7 +112,7 @@ describe('deferred node media queue', () => {
     expect(activated).toEqual(['offscreen', 'visible'])
   })
 
-  it('turns the active-slot watchdog into an observable timeout', () => {
+  it('releases a stuck active slot without treating the media as failed', () => {
     vi.useFakeTimers()
     const onTimeout = vi.fn()
     const activated: string[] = []
@@ -122,6 +124,34 @@ describe('deferred node media queue', () => {
 
     expect(onTimeout).toHaveBeenCalledTimes(1)
     expect(activated).toEqual(['timed-out', 'next'])
+  })
+
+  it('gives video first-frame decode longer than the queue watchdog', () => {
+    vi.useFakeTimers()
+    const onTimeout = vi.fn()
+
+    scheduleDeferredNodeMediaLoadTimeout('video', onTimeout)
+    vi.advanceTimersByTime(8000)
+    expect(onTimeout).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(22000)
+    expect(onTimeout).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the mounted video source through StrictMode effect replay and releases only on ref replacement', () => {
+    const pause = vi.fn()
+    const removeAttribute = vi.fn()
+    const load = vi.fn()
+    const mounted = { pause, removeAttribute, load } as unknown as HTMLVideoElement
+
+    expect(replaceDeferredNodeVideoElement(mounted, mounted)).toBe(mounted)
+    expect(pause).not.toHaveBeenCalled()
+    expect(removeAttribute).not.toHaveBeenCalled()
+
+    expect(replaceDeferredNodeVideoElement(mounted, null)).toBeNull()
+    expect(pause).toHaveBeenCalledTimes(1)
+    expect(removeAttribute).toHaveBeenCalledWith('src')
+    expect(load).toHaveBeenCalledTimes(1)
   })
 
   it('keeps video activation on its own lower concurrency lane', () => {

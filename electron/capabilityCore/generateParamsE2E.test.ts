@@ -164,6 +164,33 @@ describe("buildGenerateParams — 画幅/时长归一（纯函数）", () => {
     expect(buildGenerateParams({})).toEqual({});
     expect(buildGenerateParams({ aspect_ratio: "  ", resolution: "", duration: Number.NaN })).toEqual({});
   });
+  it("首尾帧 URL 铺进 first_frame/firstFrameUrl；多图参考不与首尾帧混槽", () => {
+    expect(buildGenerateParams({
+      first_frame: "nomi-local://a/f.jpg",
+      last_frame: "nomi-local://a/l.jpg",
+      duration: 5,
+      resolution: "480p竖",
+    })).toEqual({
+      duration: 5,
+      resolution: "480p竖",
+      first_frame: "nomi-local://a/f.jpg",
+      firstFrameUrl: "nomi-local://a/f.jpg",
+      last_frame: "nomi-local://a/l.jpg",
+      lastFrameUrl: "nomi-local://a/l.jpg",
+    });
+    expect(buildGenerateParams({
+      references: ["https://a/1.jpg", "https://a/2.jpg"],
+      audio_references: ["https://a/a.wav"],
+    })).toEqual({
+      reference_image_urls: ["https://a/1.jpg", "https://a/2.jpg"],
+      reference_audio_urls: ["https://a/a.wav"],
+    });
+    expect(buildGenerateParams({
+      first_frame: "https://a/f.jpg",
+      last_frame: "https://a/l.jpg",
+      references: ["https://a/1.jpg"],
+    }).reference_image_urls).toBeUndefined();
+  });
   it("非字符串比例/非有限时长被忽略（不把脏值塞进 wire）", () => {
     expect(buildGenerateParams({ aspect_ratio: 169 as unknown as string, duration: "8" as unknown as number })).toEqual({});
   });

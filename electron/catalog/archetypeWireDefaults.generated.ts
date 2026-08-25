@@ -333,6 +333,22 @@ export const ARCHETYPE_WIRE_DEFAULTS: Record<string, Record<string, Record<strin
       }
     }
   },
+  "minimax-h3-autodl-art": {
+    "text_to_video": {
+      "*": {
+        "workflow_id": "minimax_h3_lightx2v_no_pic",
+        "resolution": "768p竖",
+        "duration": 5
+      }
+    },
+    "image_to_video": {
+      "*": {
+        "workflow_id": "minimax_h3_image_audio_to_video_v2_15s",
+        "resolution": "768p竖",
+        "duration": 5
+      }
+    }
+  },
   "vidu-q3": {
     "image_to_video": {
       "*": {
@@ -750,50 +766,4 @@ export const ARCHETYPE_WIRE_DEFAULTS: Record<string, Record<string, Record<strin
 
 // size 键比例语义桥接（从档案 size 控件选项集 derive）：headless size 别名闸据此判「调用方比例能否落到 size」，
 // 不再只按默认值字面形状猜（修 seedance-2.5-apimart t2v 的 size 默认 "adaptive" 被误判像素语义、吞掉调用方比例）。
-export const ARCHETYPE_SIZE_RATIO_SEMANTIC: Record<string, Record<string, boolean>> = {
-  "seedream": {
-    "text_to_image": true,
-    "image_edit": true
-  },
-  "nano-banana": {
-    "text_to_image": true,
-    "image_edit": true
-  },
-  "qwen-image": {
-    "text_to_image": true,
-    "image_edit": true
-  },
-  "imagen-4": {
-    "text_to_image": true
-  },
-  "z-image-turbo": {
-    "text_to_image": true
-  },
-  "wan-2.7": {
-    "text_to_video": true,
-    "image_to_video": true
-  },
-  "grok-imagine-1.5-video": {
-    "text_to_video": true
-  },
-  "seedance-2-apimart": {
-    "text_to_video": true,
-    "image_to_video": true
-  },
-  "seedance-2.5-apimart": {
-    "text_to_video": true,
-    "image_to_video": true
-  },
-  "happyhorse-1.1": {
-    "text_to_video": true,
-    "image_to_video": true
-  },
-  "seedream-5-pro": {
-    "text_to_image": true,
-    "image_edit": true
-  },
-  "omni-flash-ext": {
-    "text_to_video": true,
-    "image_to_video": true
-  }
-};
+export const ARCHETYPE_SIZE_RATIO_SEMANTIC: Record<string, Record<string, boolean>> = {"seedream":{"text_to_image":true,"image_edit":true},"nano-banana":{"text_to_image":true,"image_edit":true},"qwen-image":{"text_to_image":true,"image_edit":true},"imagen-4":{"text_to_image":true},"z-image-turbo":{"text_to_image":true},"wan-2.7":{"text_to_video":true,"image_to_video":true},"grok-imagine-1.5-video":{"text_to_video":true},"seedance-2-apimart":{"text_to_video":true,"image_to_video":true},"seedance-2.5-apimart":{"text_to_video":true,"image_to_video":true},"happyhorse-1.1":{"text_to_video":true,"image_to_video":true},"seedream-5-pro":{"text_to_image":true,"image_edit":true},"omni-flash-ext":{"text_to_video":true,"image_to_video":true}};

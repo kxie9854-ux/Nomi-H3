@@ -23,6 +23,7 @@ import {
   addNodes,
   connectNodes,
   deleteNodes,
+  groupNodes,
   readCanvas,
   setNodePrompt,
   type CanvasSnapshot,
@@ -37,9 +38,29 @@ import { pickFirstFramePainter } from './firstFramePainter'
 import { previousShotPromptFor } from './shotOrder'
 import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
 import { copyAssetFile } from '../assets/projectAssetStore'
-
-/** 生成意图（粗粒度）→ 默认 ProfileKind。调用方也可显式传 kind 覆盖。 */
-export type GenerateIntent = 'image' | 'video' | 'text' | 'audio'
+import { AUTODL_ART_H3_MODEL_SEED, AUTODL_ART_VENDOR_SEED } from '../catalog/autodlArtH3'
+import { autodlArtH3RejectReason, prepareAutodlArtH3Params } from '../catalog/autodlArtH3Mode'
+import { createSpendTrustScope } from './mcpSpendTrust'
+import {
+  TERMINAL_TASK_STATUSES,
+  delayTaskPoll,
+  extractTextFromRaw,
+  frameUrlsFromEdges,
+  nodeHasRecoverableTask,
+  referenceSourceNodes,
+  referencesFromEdges,
+  setNodeStatusInSnapshot,
+  setNodeTaskInSnapshot,
+  taskIdentityFromNode,
+  writeResultToSnapshot,
+  type FetchTaskResultFn,
+  type GenerateIntent,
+  type PersistedTaskIdentity,
+  type RunTaskFn,
+  type TaskResultLike,
+} from './generationTaskState'
+export type { FetchTaskResultFn, GenerateIntent, RunTaskFn } from './generationTaskState'
+export { frameUrlsFromEdges, referenceSourceNodes, referencesFromEdges } from './generationTaskState'
 
 /**
  * 审片环 deps 工厂（可选注入，由传输层提供）。**默认不传 = 行为逐字节不变**（batchPlanPreview 渲染层路径、
@@ -62,73 +83,6 @@ export type ShotVerifyDepsContext = {
 }
 export type MakeVerifyDeps = (ctx: ShotVerifyDepsContext) => ShotVerifyDeps
 
-type TaskResultLike = {
-  id?: string
-  status?: string
-  // 字段宽容：runtime.TaskResult 的可空字段（string | null）也吃，避免传输边界处理 null
-  assets?: Array<{
-    type?: string
-    url?: string
-    thumbnailUrl?: string | null
-    providerUrl?: string | null
-    assetId?: string | null
-    text?: string | null
-  }>
-  raw?: unknown
-  /** 终态失败的真实原因（与 runtime.TaskResult.error 同义；轮询超时兜底也走这个字段）。 */
-  error?: string
-}
-
-/** runTask 的形状（注入式，便于单测构造请求体而不真打 vendor）。 */
-export type RunTaskFn = (payload: { vendor: string; request: unknown }) => Promise<TaskResultLike>
-
-/** fetchTaskResult 的形状（注入式）。异步 vendor（modelscope 图 / 视频）返 queued，需轮询到终态。 */
-export type FetchTaskResultFn = (payload: { taskId: string; vendor: string; taskKind: string; prompt: string; modelKey: string }) => Promise<{ result: TaskResultLike }>
-
-const TERMINAL_STATUSES = new Set(['succeeded', 'failed'])
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-// 连「参考边」就该等于「喂参考图」——但 headless 生成此前只读 input.references / node.references，
-// **从不读画布上的参考边**（多 agent 用户测试钉死：连线→生成=三个不同的人 / 改图模型 400「需要参考图」；
-// 对齐记忆 connection-reference-bugs 的「槽读 meta、生成读边」分裂在 headless 路仍未收口）。GUI 路由渲染层
-// 把边归一进 node.references 再发；headless/CLI/MCP 直发绕过它 → 边被无视。这里在「没有显式/节点 references」时
-// 兜底从入边解析：取指向本节点的参考类边、按 order 排，收集源节点产出的资产 URL 当参考图。GUI 路 node.references
-// 已填 → 不走此兜底，零影响。
-const REFERENCE_EDGE_MODES = new Set(['reference', 'character_ref', 'style_ref', 'composition_ref'])
-
-function sourceNodeAssetUrl(node: { result?: unknown; references?: unknown; url?: unknown } | undefined): string {
-  if (!node) return ''
-  const result = node.result as { url?: unknown } | undefined
-  if (typeof result?.url === 'string' && result.url) return result.url
-  if (typeof node.url === 'string' && node.url) return node.url
-  const refs = node.references
-  if (Array.isArray(refs) && typeof refs[0] === 'string' && refs[0]) return refs[0]
-  return ''
-}
-
-/** 指向 nodeId 的参考类入边的**源节点**（与 referencesFromEdges 同一组边判据，P1 不另立标准）。 */
-export function referenceSourceNodes(snapshot: CanvasSnapshot, nodeId: string): CanvasSnapshot['nodes'] {
-  const sources = (snapshot.edges || [])
-    .filter((edge) => edge.target === nodeId && REFERENCE_EDGE_MODES.has(edge.mode || 'reference'))
-    .map((edge) => snapshot.nodes.find((n) => n.id === edge.source))
-  return sources.filter((n): n is CanvasSnapshot['nodes'][number] => Boolean(n))
-}
-
-/** 从指向 nodeId 的参考类入边解析参考图 URL（按 order 排、去重）。供 headless 生成兜底用。 */
-export function referencesFromEdges(snapshot: CanvasSnapshot, nodeId: string): string[] {
-  const incoming = (snapshot.edges || [])
-    .filter((edge) => edge.target === nodeId && REFERENCE_EDGE_MODES.has(edge.mode || 'reference'))
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-  const urls: string[] = []
-  for (const edge of incoming) {
-    const url = sourceNodeAssetUrl(snapshot.nodes.find((n) => n.id === edge.source))
-    if (url && !urls.includes(url)) urls.push(url)
-  }
-  return urls
-}
 
 function defaultKindForIntent(intent: GenerateIntent, hasReferences: boolean): string {
   switch (intent) {
@@ -147,64 +101,6 @@ function defaultKindForIntent(intent: GenerateIntent, hasReferences: boolean): s
       return 'chat'
   }
 }
-
-/**
- * 文本生成的文本落在 result.raw（textTaskRunner 返回 assets:[] + raw=provider 响应，真机实测）。
- * best-effort 从常见位置抽干净文本：裸字符串 / {text} / OpenAI {choices[0].message.content} / {content}。
- */
-function extractTextFromRaw(raw: unknown): string {
-  if (typeof raw === 'string') return raw
-  if (raw && typeof raw === 'object') {
-    const record = raw as Record<string, unknown>
-    if (typeof record.text === 'string') return record.text
-    if (typeof record.content === 'string') return record.content
-    const choices = record.choices as Array<{ message?: { content?: unknown } }> | undefined
-    const content = choices?.[0]?.message?.content
-    if (typeof content === 'string') return content
-  }
-  return ''
-}
-
-/** 把目标节点的 status（可带 error）改写进快照（其余节点/边原样）。供生成各阶段的实时态用。 */
-function setNodeStatusInSnapshot(snapshot: CanvasSnapshot, nodeId: string, status: string, error?: string): CanvasSnapshot {
-  return {
-    ...snapshot,
-    nodes: snapshot.nodes.map((node) => (node.id === nodeId ? { ...node, status, ...(error ? { error } : {}) } : node)),
-  }
-}
-
-/** 把生成结果落回目标节点（success/error 态 + result 对象）。形状与 renderer GenerationNodeResult 对齐。 */
-function writeResultToSnapshot(snapshot: CanvasSnapshot, nodeId: string, result: TaskResultLike, intent: GenerateIntent): CanvasSnapshot {
-  const primary = (result.assets || [])[0]
-  const text = intent === 'text' ? extractTextFromRaw(result.raw) : (typeof primary?.text === 'string' ? primary.text : '')
-  const hasOutput = Boolean(primary || text)
-  return {
-    ...snapshot,
-    nodes: snapshot.nodes.map((item) =>
-      item.id === nodeId
-        ? {
-            ...item,
-            status: result.status === 'succeeded' ? 'success' : result.status === 'failed' ? 'error' : (typeof item.status === 'string' ? item.status : 'idle'),
-            ...(hasOutput
-              ? {
-                  result: {
-                    id: result.id || `result-${nodeId}`,
-                    type: intent === 'video' ? 'video' : intent === 'audio' ? 'audio' : intent === 'text' ? 'text' : 'image',
-                    ...(primary?.url ? { url: primary.url } : {}),
-                    ...(primary?.thumbnailUrl ? { thumbnailUrl: primary.thumbnailUrl } : {}),
-                    ...(primary?.providerUrl ? { providerUrl: primary.providerUrl } : {}),
-                    ...(text ? { text } : {}),
-                    ...(primary?.assetId ? { assetId: primary.assetId } : {}),
-                    createdAt: Date.now(),
-                  },
-                }
-              : {}),
-          }
-        : item,
-    ),
-  }
-}
-
 // ── 工程级 ─────────────────────────────────────────────────────────────
 
 /**
@@ -323,6 +219,25 @@ export async function deleteProjectNodes(gateway: ProjectGateway, nodeIds: strin
   return { deleted }
 }
 
+export async function groupProjectNodes(gateway: ProjectGateway, nodeIds: string[], name: string): Promise<{
+  group: { id: string; name: string; categoryId: string; nodeIds: string[] } | null
+  created: boolean
+  skipped: Array<{ nodeId: string; reason: string }>
+}> {
+  const result = groupNodes(await gateway.readDoc(), nodeIds, name)
+  if (result.created) await gateway.apply(result.snapshot)
+  return {
+    group: result.group ? {
+      id: result.group.id,
+      name: result.group.name,
+      categoryId: result.group.categoryId,
+      nodeIds: [...result.group.nodeIds],
+    } : null,
+    created: result.created,
+    skipped: result.skipped,
+  }
+}
+
 // ── 生成（复用主进程 runtime.runTask；B 模式落结果回节点）─────────────────
 
 export type GenerateInput = {
@@ -353,10 +268,12 @@ export type GenerateInput = {
    */
   lastFrameDesc?: string
   /**
-   * 由 **MCP 协议层置位**（mcpProtocol.ts，非模型入参）：这次确认还会换来「本会话该项目后续生成免问」，
+   * 由 **MCP 协议层置位**（mcpProtocol.ts，非模型入参）：这次确认还会换来「本会话该项目同一模型服务后续生成免问」，
    * 故应用内确认卡要多写一句授权范围。只影响卡上文案，不放宽任何授权——令牌照旧逐次铸、逐次核验。
    */
   grantsSessionTrust?: boolean
+  /** 只续查节点已保存的 provider taskId；找不到就报错，绝不确认付费或新提交。 */
+  resumeOnly?: boolean
   /**
    * 审片环 deps 工厂（可选，传输层注入）。**不传 = 行为逐字节不变**（不判分、不重试，返回同今天）。
    * 传了 → 生成成功后跑一次审片环（判分→定向重试 K≤2→红标），outcome 挂到返回的 `verify`。
@@ -411,6 +328,13 @@ export async function generateOnProject(
   const references = input.references && input.references.length
     ? input.references
     : (Array.isArray(node.references) && node.references.length ? node.references : referencesFromEdges(snapshot, nodeId))
+  const frames = frameUrlsFromEdges(snapshot, nodeId)
+  const paramsRecord = input.params && typeof input.params === 'object' ? input.params : {}
+  const paramFirst = typeof paramsRecord.first_frame === 'string' ? paramsRecord.first_frame.trim()
+    : typeof paramsRecord.firstFrameUrl === 'string' ? paramsRecord.firstFrameUrl.trim() : ''
+  const paramLast = typeof paramsRecord.last_frame === 'string' ? paramsRecord.last_frame.trim()
+    : typeof paramsRecord.lastFrameUrl === 'string' ? paramsRecord.lastFrameUrl.trim() : ''
+  const hasFl2vaFrames = Boolean((paramFirst && paramLast) || (frames.first && frames.last))
   // kind 选择（W1d，见 docs/plan/2026-08-20-w1d-reference-mode-alignment.md）：显式 input.kind 最高优先；
   // 带参考时**按目录 derive**该模型真实可带参考的模式（与 list_models 的 referenceModes 同一份源，P1），不再硬编码
   // image→image_edit / video→image_to_video（那对「参考模式≠默认名」的模型会选错 kind、被护栏误拒）。derive 不出
@@ -419,7 +343,58 @@ export async function generateOnProject(
     references.length > 0 && (intent === 'image' || intent === 'video')
       ? referenceModeForIntent(readCatalog(), input.vendor, input.modelKey, intent)
       : null
-  const kind = input.kind || derivedRefKind || defaultKindForIntent(intent, references.length > 0)
+  const kind = input.kind
+    || (intent === 'video' && hasFl2vaFrames ? 'image_to_video' : '')
+    || derivedRefKind
+    || defaultKindForIntent(intent, references.length > 0)
+
+  // 已经拿到 provider taskId 的节点只续查，绝不重新走确认/提交。覆盖 running/recoverable，
+  // 也覆盖旧版把查询断线错误落成 error 的项目（taskIdentityFromNode 负责一次性迁移）。
+  const persistedTask = nodeHasRecoverableTask(node, input.vendor)
+    ? taskIdentityFromNode(node, input.vendor, kind)
+    : null
+  if (persistedTask && fetchTaskResultFn) {
+    await gateway.apply(setNodeTaskInSnapshot(await gateway.readDoc(), nodeId, persistedTask, 'running'))
+    try {
+      let resumed = (await fetchTaskResultFn({
+        taskId: persistedTask.taskId,
+        vendor: input.vendor,
+        taskKind: persistedTask.taskKind,
+        prompt,
+        modelKey: input.modelKey,
+        projectId: input.projectId,
+      })).result
+      const envPoll = Number(process.env.NOMI_POLL_TIMEOUT_MS)
+      const timeoutMs = Number.isFinite(envPoll) && envPoll > 0 ? envPoll : 300000
+      const startedAt = Date.now()
+      while (resumed.status && !TERMINAL_TASK_STATUSES.has(resumed.status)) {
+        if (Date.now() - startedAt > timeoutMs) {
+          throw new Error(desktopT('tasks.pollTimedOut', {
+            seconds: Math.round((Date.now() - startedAt) / 1000),
+            status: resumed.status || 'unknown',
+          }))
+        }
+        await delayTaskPoll(3000)
+        resumed = (await fetchTaskResultFn({
+          taskId: persistedTask.taskId,
+          vendor: input.vendor,
+          taskKind: persistedTask.taskKind,
+          prompt,
+          modelKey: input.modelKey,
+          projectId: input.projectId,
+        })).result
+      }
+      await gateway.apply(writeResultToSnapshot(await gateway.readDoc(), nodeId, resumed, intent))
+      return { nodeId, status: resumed.status || 'unknown', assets: resumed.assets || [] }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      await gateway.apply(setNodeTaskInSnapshot(await gateway.readDoc(), nodeId, persistedTask, 'recoverable', message))
+      throw error
+    }
+  }
+  if (input.resumeOnly) {
+    throw new Error(`节点 ${nodeId} 没有可续查的供应商任务；为避免重复扣费，本次没有提交新任务。`)
+  }
 
   // 先把节点以「排队中」态写出去——A 模式：节点立即出现在画布（所见即所得）；B 模式：落盘占位。
   snapshot = setNodeStatusInSnapshot(snapshot, nodeId, 'queued')
@@ -437,6 +412,7 @@ export async function generateOnProject(
     vendor: input.vendor,
     modelKey: input.modelKey,
     prompt,
+    approvalScope: createSpendTrustScope(input.projectId, input.vendor, input.modelKey),
     // 协议层置位（不是模型能填的入参）：这张卡点下去还会换来一段免问期 → 卡上要写明授权范围。
     ...(input.grantsSessionTrust ? { grantsSessionTrust: true } : {}),
   })
@@ -498,14 +474,15 @@ export async function generateOnProject(
     // 于是 runFirstHop 判「首帧未产出可用图」→ 每次都降级。主路径（下面那段）一直有轮询，
     // 这条支路漏了（单测的 runTaskFn 桩是同步返图的，桩不会 queued，所以测不出来）。
     let frame = out
-    if (fetchTaskResultFn && frame.status && !TERMINAL_STATUSES.has(frame.status)) {
+    if (fetchTaskResultFn && frame.status && !TERMINAL_TASK_STATUSES.has(frame.status)) {
       const startedAt = Date.now()
-      while (frame.status && !TERMINAL_STATUSES.has(frame.status)) {
+      while (frame.status && !TERMINAL_TASK_STATUSES.has(frame.status)) {
         if (Date.now() - startedAt > 240000) break // 首帧是增益，到点就放弃走一跳，不拖垮整镜
-        await delay(1500)
+        await delayTaskPoll(1500)
         const polled = await fetchTaskResultFn({
           taskId: frame.id || '', vendor: painter.vendorKey, taskKind: frameKind,
           prompt: framePrompt, modelKey: painter.modelKey,
+          projectId: input.projectId,
         })
         frame = polled.result
       }
@@ -553,11 +530,27 @@ export async function generateOnProject(
     twoHopApplied: Boolean(twoHop?.applied),
   })
 
+  const isAutodlArtH3 = input.vendor === AUTODL_ART_VENDOR_SEED.key && input.modelKey === AUTODL_ART_H3_MODEL_SEED.modelKey
+  let extrasParams: Record<string, unknown> = { ...(input.params || {}) }
+  if (!paramFirst && frames.first) {
+    extrasParams.first_frame = frames.first
+    extrasParams.firstFrameUrl = frames.first
+  }
+  if (!paramLast && frames.last) {
+    extrasParams.last_frame = frames.last
+    extrasParams.lastFrameUrl = frames.last
+  }
+  if (isAutodlArtH3) {
+    const rejected = autodlArtH3RejectReason(extrasParams, kind)
+    if (rejected) throw new Error(rejected)
+    extrasParams = prepareAutodlArtH3Params(extrasParams)
+  }
+
   const request = {
     kind,
     prompt: effectivePrompt,
     extras: {
-      ...(input.params || {}),
+      ...extrasParams,
       modelKey: input.modelKey,
       modelAlias: input.modelKey,
       projectId: input.projectId,
@@ -584,11 +577,16 @@ export async function generateOnProject(
   }
 
   let result: TaskResultLike
+  let submittedTask: PersistedTaskIdentity | null = null
   try {
     result = await runTaskFn({ vendor: input.vendor, request })
 
     // 异步 vendor 首调返 queued/processing → 本进程内轮询到终态（视频给更长超时）。无 fetch 注入则不轮询。
-    if (fetchTaskResultFn && result.status && !TERMINAL_STATUSES.has(result.status)) {
+    if (fetchTaskResultFn && result.status && !TERMINAL_TASK_STATUSES.has(result.status)) {
+      if (result.id) {
+        submittedTask = { taskId: result.id, taskKind: kind }
+        await gateway.apply(setNodeTaskInSnapshot(await gateway.readDoc(), nodeId, submittedTask, 'running'))
+      }
       // 慢 vendor（如 runninghub/ComfyUI 队列可达数分钟）可经 NOMI_POLL_TIMEOUT_MS 调大本进程轮询上限，
       // 否则 240s/300s 到点 break → 结果未取回（headless 返 queued）。缺省维持原值。
       const envPoll = Number(process.env.NOMI_POLL_TIMEOUT_MS)
@@ -599,37 +597,36 @@ export async function generateOnProject(
       // 的 MARKER 约定）。本循环一次只跑一个任务，不存在批量同相位问题，故不叠抖动/退避。
       const pollIntervalMs = kind === 'text_to_video' || kind === 'image_to_video' ? 3000 : 1500
       const startedAt = Date.now()
-      while (result.status && !TERMINAL_STATUSES.has(result.status)) {
+      while (result.status && !TERMINAL_TASK_STATUSES.has(result.status)) {
         if (Date.now() - startedAt > timeoutMs) {
           // 到点必须落**终态**：旧版直接 break，result 保持 queued/running 且不带 error —— 调用方
           // （MCP/agent/CLI）拿到一个永远非终态的结果，等同「转圈但没人告诉你出了什么事」。
           // 超时≠上游一定失败，故文案明说任务可能仍在供应商侧运行。
-          result = {
-            ...result,
-            status: 'failed',
-            error: desktopT('tasks.pollTimedOut', {
-              seconds: Math.round((Date.now() - startedAt) / 1000),
-              status: result.status || 'unknown',
-            }),
-          }
-          break
+          throw new Error(desktopT('tasks.pollTimedOut', {
+            seconds: Math.round((Date.now() - startedAt) / 1000),
+            status: result.status || 'unknown',
+          }))
         }
-        await delay(pollIntervalMs)
+        await delayTaskPoll(pollIntervalMs)
         const polled = await fetchTaskResultFn({
           taskId: result.id || '',
           vendor: input.vendor,
           taskKind: kind,
           prompt,
           modelKey: input.modelKey,
+          projectId: input.projectId,
         })
         result = polled.result
       }
     }
   } catch (error) {
-    // 失败（含未授权/超时）→ 把节点落 error 态写出去（A 模式：用户立刻看到失败 + 原因），再透传错误给 agent。
+    // 已拿到 taskId 后的查询断线/超时 ≠ 生成失败：保留可续查回执，绝不让下一次调用重新下单。
+    // 未拿到 taskId 才沿用 error（可能是确认拒绝、提交前校验或提交明确失败）。
     const message = error instanceof Error ? error.message : String(error)
     try {
-      await gateway.apply(setNodeStatusInSnapshot(await gateway.readDoc(), nodeId, 'error', message))
+      await gateway.apply(submittedTask
+        ? setNodeTaskInSnapshot(await gateway.readDoc(), nodeId, submittedTask, 'recoverable', message)
+        : setNodeStatusInSnapshot(await gateway.readDoc(), nodeId, 'error', message))
     } catch {
       /* 写 error 态失败不掩盖原始错误 */
     }
@@ -729,9 +726,7 @@ export async function generateOnProject(
 /** 该镜锚描述：指向本节点的参考类入边的**源节点 prompt**（角色/场景卡的设定文本，身份轴对照基准）。 */
 function anchorDescriptionsForNode(snapshot: CanvasSnapshot, nodeId: string): string[] {
   const out: string[] = []
-  for (const edge of snapshot.edges || []) {
-    if (edge.target !== nodeId || !REFERENCE_EDGE_MODES.has(edge.mode || 'reference')) continue
-    const source = snapshot.nodes.find((n) => n.id === edge.source)
+  for (const source of referenceSourceNodes(snapshot, nodeId)) {
     const desc = source && typeof source.prompt === 'string' ? source.prompt.trim() : ''
     if (desc && !out.includes(desc)) out.push(desc)
   }

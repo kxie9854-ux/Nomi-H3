@@ -4,8 +4,8 @@ import { SPEND_TRUST_REASK_AFTER, SPEND_AUTO_RETRY_MAX, spendConfirmElicit } fro
 
 // 会话级付费信任（plan 2026-08-19-session-scoped-spend-trust）：治用户原话「反复去软件确认 不是太麻烦了」。
 // 纯协议层单测（注入假 transport）——不 spawn 进程、不碰真实库/App、不花额度。验证：
-//  · 某项目首次生成照旧问真人；批准后同会话同项目后续免问，且仍逐次带 spendConfirmed（硬闸不松）；
-//  · 换项目重新问；拒绝不记信任；invoke 抛错不记信任（失败不该换来一段免问期）；
+//  · 某项目首次生成照旧问真人；批准后同项目同模型服务后续免问，且仍逐次带 spendConfirmed（硬闸不松）；
+//  · 换项目或模型服务重新问；拒绝不记信任；invoke 抛错不记信任；
 //  · 用满 SPEND_TRUST_REASK_AFTER 次 → 再问一次，且文案讲清为什么又问；
 //  · 卡片路（客户端不支持 elicitation + App 开）同样吃信任，且首张卡带 grantsSessionTrust（授权范围写脸上）。
 
@@ -62,11 +62,11 @@ class SpendHarness {
 
   private callId = 1
   /** 发一次 nomi_generate，返回工具调用 id（不等结果）。 */
-  callGenerate(projectId: string): number {
+  callGenerate(projectId: string, vendor = 'v', modelKey = 'm', extra: Record<string, unknown> = {}): number {
     const id = (this.callId += 1)
     this.send({
       jsonrpc: '2.0', id, method: 'tools/call',
-      params: { name: 'nomi_generate', arguments: { projectId, vendor: 'v', modelKey: 'm', intent: 'image', prompt: 'p' } },
+      params: { name: 'nomi_generate', arguments: { projectId, vendor, modelKey, intent: 'image', prompt: 'p', ...extra } },
     })
     return id
   }
@@ -90,6 +90,18 @@ let harness: SpendHarness | null = null
 afterEach(() => { harness = null })
 
 describe('nomi-mcp · 付费会话级信任（elicitation 路）', () => {
+  it('resume_only 是免费续查：不弹确认、不带 spendConfirmed，直接交给能力核硬校验 taskId', async () => {
+    harness = new SpendHarness(true)
+    await harness.initialize(true)
+    harness.callGenerate('p1', 'autodl-art', 'autodl-art-h3', { nodeId: 'video-1', resume_only: true })
+    const res = await harness.next()
+    expect(res.result).not.toMatchObject({ isError: true })
+    const calls = harness.generateCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0].params.resumeOnly).toBe(true)
+    expect(calls[0].options?.spendConfirmed).not.toBe(true)
+  })
+
   it('首次问、批准后同项目免问，且每次仍带 spendConfirmed（只免问不免令牌）', async () => {
     harness = new SpendHarness(true)
     await harness.initialize(true)
@@ -106,6 +118,31 @@ describe('nomi-mcp · 付费会话级信任（elicitation 路）', () => {
     expect(calls.every((c) => c.options?.spendConfirmed === true)).toBe(true)
   })
 
+  it('同模型服务并发生成只问一次，跟随请求等待首张成功后再放行', async () => {
+    harness = new SpendHarness(true)
+    await harness.initialize(true)
+    harness.callGenerate('p1')
+    harness.callGenerate('p1')
+
+    const elicit = await harness.next()
+    expect(elicit.method).toBe('elicitation/create')
+    expect(elicit.params?._meta).toMatchObject({
+      nomiSpendApprovalScope: 'p1\0v\0m',
+      nomiSpendApprovalPasses: SPEND_TRUST_REASK_AFTER,
+    })
+    harness.send({ jsonrpc: '2.0', id: elicit.id, result: { action: 'accept', content: { confirm: true } } })
+
+    const first = await harness.next()
+    const second = await harness.next()
+    expect(first.method).not.toBe('elicitation/create')
+    expect(second.method).not.toBe('elicitation/create')
+    expect(first.result).not.toMatchObject({ isError: true })
+    expect(second.result).not.toMatchObject({ isError: true })
+    const calls = harness.generateCalls()
+    expect(calls).toHaveLength(2)
+    expect(calls.every((call) => call.options?.spendConfirmed === true)).toBe(true)
+  })
+
   it('换项目要重新问（信任按 projectId 隔离）', async () => {
     harness = new SpendHarness(true)
     await harness.initialize(true)
@@ -117,6 +154,16 @@ describe('nomi-mcp · 付费会话级信任（elicitation 路）', () => {
     harness.send({ jsonrpc: '2.0', id: elicit.id, result: { action: 'accept', content: { confirm: true } } })
     await harness.next()
     expect(harness.generateCalls()).toHaveLength(2)
+  })
+
+  it('同项目切换模型服务要重新问，静帧授权不会顺带放行 H3', async () => {
+    harness = new SpendHarness(true)
+    await harness.initialize(true)
+    await harness.generateWithApproval('p1')
+    harness.callGenerate('p1', 'autodl-art', 'autodl-art-h3')
+    const elicit = await harness.next()
+    expect(elicit.method).toBe('elicitation/create')
+    expect(String(elicit.params?.message || '')).toContain('autodl-art · autodl-art-h3')
   })
 
   it('拒绝不记信任：下一次照旧问', async () => {
@@ -214,12 +261,13 @@ describe('nomi-mcp · 付费会话级信任（应用内卡片路 · 客户端不
 // W1 裁定 D：确认闸诚实披露「含自动审片 + 最多 N 次定向重试」——用户批的其实是「首发 + 最多 N 次重试」，
 // 重试也算这次的额度，不写明就是骗同意（D4）。
 describe('spendConfirmElicit · 审片重试的诚实披露（W1 裁定 D）', () => {
-  it('首次确认文案讲清「含自动审片 + 最多 N 次重试 + 重试算额度」', () => {
+  it('首次确认文案讲清「模型服务范围 + 自动审片 + 最多 N 次重试 + 重试算额度」', () => {
     const { message, description } = spendConfirmElicit('即将用 X 生成一段视频，将消耗模型额度。', false)
     expect(message).toContain('自动审片')
     expect(message).toContain(String(SPEND_AUTO_RETRY_MAX)) // N 次重试写明
     expect(message).toContain('也算这次生成的额度') // 重试花钱说清
     expect(description).toContain('自动审片')
+    expect(message).toContain('同一模型服务')
   })
   it('reask 文案同样带审片重试披露（用满额度再问时也不隐瞒）', () => {
     const { message } = spendConfirmElicit('costHint', true)

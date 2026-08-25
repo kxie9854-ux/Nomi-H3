@@ -41,6 +41,36 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
     expect(some.outcome).toMatchObject({ eventCount: 1, nextCursor: 6 })
   })
 
+  it('assemble_timeline：排了几段 + 下一步看时间轴', () => {
+    const { text, outcome } = buildToolOutcome(
+      'nomi_assemble_timeline',
+      { projectId: 'p1' },
+      { arranged: 2, total: 2, skipped: [] },
+    )
+    expect(text).toContain('成片已排上时间轴')
+    expect(text).toContain('2/2')
+    expect(outcome).toMatchObject({ kind: 'timeline_assemble', arranged: 2, projectId: 'p1' })
+  })
+
+  it('group_nodes：区分新建与幂等复用，并回报跳过数', () => {
+    const created = buildToolOutcome(
+      'nomi_group_nodes',
+      { projectId: 'p1', name: '镜头 1' },
+      { created: true, group: { id: 'g1', name: '镜头 1', nodeIds: ['a', 'b'] }, skipped: [{ nodeId: 'x' }] },
+    )
+    expect(created.text).toContain('画布分组已创建')
+    expect(created.text).toContain('2 个节点')
+    expect(created.text).toContain('跳过 1 个节点')
+    expect(created.outcome).toMatchObject({ kind: 'canvas_group', groupId: 'g1', created: true, grouped: 2 })
+
+    const reused = buildToolOutcome(
+      'nomi_group_nodes',
+      { projectId: 'p1', name: '镜头 1' },
+      { created: false, group: { id: 'g1', name: '镜头 1', nodeIds: ['b', 'a'] }, skipped: [] },
+    )
+    expect(reused.text).toContain('已复用现有画布分组')
+  })
+
   it('generate：参数回显（模型/意图/参考数/截断提示词）+ 结构化 params + 工程级深链（数据+文本）', () => {
     const { text, outcome } = buildToolOutcome(
       'nomi_generate',
@@ -189,7 +219,7 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
     expect(text).toContain('judge model unavailable')
   })
 
-  it('画布低层工具维持 JSON 直出（text=null 不接管）', () => {
+  it('其余画布低层工具维持 JSON 直出（text=null 不接管）', () => {
     const { text, outcome } = buildToolOutcome('nomi_read_canvas', { projectId: 'p1' }, { nodes: [] })
     expect(text).toBeNull()
     expect(outcome).toBeNull()

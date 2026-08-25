@@ -5,6 +5,7 @@ import {
   connectNodes,
   deleteNodes,
   emptyCanvasSnapshot,
+  groupNodes,
   normalizeSnapshot,
   readCanvas,
   setNodePrompt,
@@ -22,6 +23,10 @@ describe('capabilityCore/canvasGraph', () => {
     expect(snapshot.nodes).toHaveLength(2)
     expect(snapshot.nodes[0].kind).toBe('text')
     expect(snapshot.nodes[0].prompt).toBe('一句脚本')
+    expect(snapshot.nodes[0].contentJson).toEqual({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: '一句脚本' }] }],
+    })
     expect(snapshot.nodes[1].title).toBe('镜头 1')
     // 共用布局：批量不再堆成单列（旧平行版的 x=0 竖排正是被修的病）。两节点落点不相同。
     const p0 = snapshot.nodes[0].position
@@ -149,6 +154,43 @@ describe('capabilityCore/canvasGraph', () => {
     expect(snapshot.edges).toHaveLength(0)
   })
 
+  it('groupNodes 自动推导分类、抢走旧组成员并同步 node.groupId', () => {
+    const built = addNodes(emptyCanvasSnapshot(), [{ kind: 'image' }, { kind: 'video' }, { kind: 'image' }])
+    const [a, b, c] = built.ids
+    const before = {
+      ...built.snapshot,
+      groups: [{ id: 'old', name: '旧组', categoryId: 'shots', nodeIds: [a, c], createdAt: 1, updatedAt: 1 }],
+    }
+    const result = groupNodes(before, [a, b], '镜头 1')
+    expect(result.created).toBe(true)
+    expect(result.group).toMatchObject({ name: '镜头 1', categoryId: 'shots', nodeIds: [a, b] })
+    expect(result.snapshot.groups?.find((group) => group.id === 'old')?.nodeIds).toEqual([c])
+    expect(result.snapshot.nodes.filter((node) => [a, b].includes(node.id)).map((node) => node.groupId)).toEqual([
+      result.group?.id,
+      result.group?.id,
+    ])
+  })
+
+  it('groupNodes 同名同成员幂等复用，不重复建组', () => {
+    const built = addNodes(emptyCanvasSnapshot(), [{ kind: 'image' }, { kind: 'video' }])
+    const first = groupNodes(built.snapshot, built.ids, '镜头 1')
+    const second = groupNodes(first.snapshot, [...built.ids].reverse(), '镜头 1')
+    expect(second.created).toBe(false)
+    expect(second.group?.id).toBe(first.group?.id)
+    expect(second.snapshot.groups).toHaveLength(1)
+  })
+
+  it('groupNodes 跳过不存在与跨分类节点；不足两个同分类节点不落组', () => {
+    const built = addNodes(emptyCanvasSnapshot(), [{ kind: 'image' }, { kind: 'character' }])
+    const result = groupNodes(built.snapshot, [built.ids[0], 'ghost', built.ids[1]], '混合组')
+    expect(result.created).toBe(false)
+    expect(result.group).toBeNull()
+    expect(result.skipped).toEqual([
+      { nodeId: 'ghost', reason: '节点不存在' },
+      { nodeId: built.ids[1], reason: '节点分类不同' },
+    ])
+  })
+
   it('normalizeSnapshot 把坏数据降级为空，过滤无 id 的节点/边', () => {
     expect(normalizeSnapshot(null).nodes).toHaveLength(0)
     const dirty = normalizeSnapshot({
@@ -164,5 +206,6 @@ describe('capabilityCore/canvasGraph', () => {
     const view = readCanvas(built.snapshot)
     expect(view.nodes[0]).toMatchObject({ kind: 'text', prompt: 'p', title: 't', status: 'idle', hasResult: false })
     expect(view.nodes[0]).not.toHaveProperty('raw')
+    expect(view.groups).toEqual([])
   })
 })

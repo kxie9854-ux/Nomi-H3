@@ -249,7 +249,7 @@ export default function GenerationCanvas({ readOnly = false }: GenerationCanvasP
       const detail = (event as CustomEvent<{ nodeId?: unknown }>).detail
       const nodeId = typeof detail?.nodeId === 'string' ? detail.nodeId : ''
       if (!nodeId) return
-      const target = allNodesRef.current.find((node) => node.id === nodeId)
+      const target = useGenerationCanvasStore.getState().nodes.find((node) => node.id === nodeId)
       if (!target) {
         toast(t('generationCommon.node.sourceNoLongerExists'), 'warning')
         return

@@ -134,6 +134,9 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   "minimax-h3-apimart": [
     "MiniMax-H3"
   ],
+  "minimax-h3-autodl-art": [
+    "autodl-art-h3"
+  ],
   "minimax-h3-regeneration": [
     "MiniMax-H3-Regeneration"
   ],

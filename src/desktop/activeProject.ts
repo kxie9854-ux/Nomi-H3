@@ -1,3 +1,5 @@
+import { getDesktopBridge } from './bridge'
+
 let activeProjectId = ''
 let activeProjectIdInitialized = false
 
@@ -10,8 +12,14 @@ export function setDesktopActiveProjectId(projectId: string | null | undefined):
   const nextProjectId = typeof projectId === 'string' ? projectId.trim() : ''
   const changed = !activeProjectIdInitialized || activeProjectId !== nextProjectId
   activeProjectIdInitialized = true
-  if (!changed) return
   activeProjectId = nextProjectId
+  // 活动项目的单一 setter 同步上报能力核。此前上报绑在“项目持久化订阅已建立”这个间接时机；
+  // 界面已经 hydrate 并显示项目、订阅尚未绑定时，主进程仍以为没有项目打开，排时间轴恒 409。
+  // IPC 对端（主进程/能力核）可能独立重启，不能拿 renderer 本地去重状态推断对端已经同步；
+  // 每次显式 setter 都重申当前值，只对 renderer 内部订阅事件去重。
+  const capabilityBridge = getDesktopBridge()?.capability
+  capabilityBridge?.setActiveProject(nextProjectId)
+  if (!changed) return
   if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
     window.dispatchEvent(new CustomEvent(DESKTOP_ACTIVE_PROJECT_CHANGED_EVENT, { detail: { projectId: nextProjectId } }))
   }

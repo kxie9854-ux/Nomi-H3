@@ -6,6 +6,7 @@ import {
   createNamedProject,
   deleteProjectNodes,
   generateOnProject,
+  groupProjectNodes,
   importProjectAsset,
   listAllProjects,
   listAvailableModels,
@@ -61,6 +62,11 @@ export type DispatchContext = {
    * 领域策略住 shotVerifyOrchestrate，传输层只注入 deps，core 只透传 outcome（三层干净，方案 §3/§9）。
    */
   makeVerifyDeps?: MakeVerifyDeps
+  /**
+   * 把已生成镜头排上时间轴。只在 Nomi 窗口打开且该项目在前台时注入（时间轴活在渲染层 store）。
+   * 不注入 → 明确拒绝，避免 headless 静默写一份会被打开项目覆盖的盘上时间轴。
+   */
+  arrangeTimeline?: (input: { projectId: string; nodeIds?: string[] }) => Promise<unknown>
 }
 
 const PRODUCTION_START_FIELDS = new Set([
@@ -332,6 +338,14 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
     }
     case 'canvas.connect':
       return connectProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.connections) ? (params.connections as never[]) : [])
+    case 'canvas.groupNodes': {
+      assertOnlyFields(params, new Set(['projectId', 'nodeIds', 'name']))
+      const name = optionalText(params.name, 'group name', 120)
+      if (!name) throw new RpcError('Invalid group name', 400)
+      const nodeIds = stringList(params.nodeIds, 'nodeIds', 200) || []
+      if (nodeIds.length < 2) throw new RpcError('A group needs at least 2 node ids', 400)
+      return groupProjectNodes(ctx.makeGateway(projectIdOf(params)), nodeIds, name)
+    }
     case 'canvas.setPrompt':
       return setProjectNodePrompt(
         ctx.makeGateway(projectIdOf(params)),
@@ -365,6 +379,15 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
         ctx.runTask,
         ctx.fetchTaskResult,
       )
+    case 'timeline.assemble': {
+      assertOnlyFields(params, new Set(['projectId', 'nodeIds']))
+      const projectId = requiredIdentifier(params.projectId, 'project')
+      const nodeIds = Array.isArray(params.nodeIds)
+        ? params.nodeIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0).map((id) => id.trim())
+        : undefined
+      if (!ctx.arrangeTimeline) throw new RpcError('请在 Nomi 里打开这个项目后再排成片', 409)
+      return ctx.arrangeTimeline({ projectId, ...(nodeIds && nodeIds.length ? { nodeIds } : {}) })
+    }
     default:
       throw new RpcError(`未知方法: ${method}`, 404)
   }

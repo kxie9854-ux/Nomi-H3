@@ -97,6 +97,24 @@ export const MCP_TOOL_CATALOG = [
     build: (a: Record<string, unknown>) => ({ projectId: a.projectId, connections: a.connections || [] }),
   },
   {
+    name: 'nomi_group_nodes',
+    description:
+      '把至少 2 个已有画布节点收进一个命名分组。分类从节点自动推导；跨分类节点会跳过并回报。'
+      + '节点已在别组时会移动到新组；相同名称与相同成员重复调用会复用原组，不制造重复分组。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        nodeIds: { type: 'array', items: { type: 'string' }, minItems: 2, description: '要编组的既有节点 id（至少 2 个）。' },
+        name: { type: 'string', description: '用户可见的分组名，如“镜头 1”或“角色参考”。' },
+      },
+      required: ['projectId', 'nodeIds', 'name'],
+      additionalProperties: false,
+    },
+    method: 'canvas.groupNodes',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, nodeIds: a.nodeIds || [], name: a.name }),
+  },
+  {
     name: 'nomi_set_node_prompt',
     description: '改某节点的提示词（可选改标题）。',
     inputSchema: {
@@ -388,7 +406,10 @@ export const MCP_TOOL_CATALOG = [
     description:
       '触发一次生成（用 Nomi 的 archetype 正确组装参数 + 落资产回节点）。会花用户额度。intent=image/video/text/audio。'
       + '画幅/时长要显式传 aspect_ratio/resolution/duration——**写进 prompt 里模型收不到**（真机实测：写"16:9"进提示词仍出方图，'
-      + '因为渠道有默认 1:1 会盖过）。这三个参数会以调用方优先合并进真实请求（caller-wins），不传则用该模型默认。',
+      + '因为渠道有默认 1:1 会盖过）。这三个参数会以调用方优先合并进真实请求（caller-wins），不传则用该模型默认。'
+      + '本 fork 出视频只用 vendor=autodl-art、modelKey=autodl-art-h3。默认先出静帧再 H3。没有独立图生视频：只给一张首帧会被拒，请补尾帧或改多图参考。画布上 first_frame/last_frame 连线会自动填槽。没有参考视频槽。'
+      + 'H3 分辨率枚举是中文：480p竖 / 768p竖 / 480p横 / 768p横。首尾帧用 first_frame+last_frame（URL）；多图参考用 references；参考音频用 audio_references。'
+      + '节点已有远端 taskId 时用 resume_only=true：只续查，不再确认或提交；没有可续查任务会直接拒绝。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -421,22 +442,70 @@ export const MCP_TOOL_CATALOG = [
             + '首尾都给，运动的落点被两端夹住，不会「动到一半人就变了」。'
             + '仅在该模型确有尾帧槽时才会生效并多花一张图的额度；模型没有这个槽就自动忽略。',
         },
+        first_frame: {
+          type: 'string',
+          description: '首尾帧模式：首帧图 URL（nomi-local:// 或 https）。AutoDL.art 必须同时给 last_frame。',
+        },
+        last_frame: {
+          type: 'string',
+          description: '首尾帧模式：尾帧图 URL。与 first_frame 成对；只给首帧会被拒。',
+        },
+        audio_references: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '多图参考可选：最多 3 段参考音频 URL，每段 2–15 秒。',
+        },
+        resume_only: {
+          type: 'boolean',
+          description: '仅续查该节点已保存的远端任务。true 时绝不触发付费确认或新提交；没有 taskId 就报错。',
+        },
       },
       required: ['projectId', 'vendor', 'modelKey', 'intent', 'prompt'],
     },
     method: 'generate',
+    build: (a: Record<string, unknown>) => {
+      const params = buildGenerateParams(a)
+      const autodlVideo = a.vendor === 'autodl-art' && a.modelKey === 'autodl-art-h3' && a.intent === 'video'
+      const hasI2vSlots = Boolean(
+        params.first_frame
+        || params.last_frame
+        || (Array.isArray(params.reference_image_urls) && params.reference_image_urls.length)
+        || (Array.isArray(params.reference_audio_urls) && params.reference_audio_urls.length),
+      )
+      return {
+        projectId: a.projectId, vendor: a.vendor, modelKey: a.modelKey, intent: a.intent, prompt: a.prompt, nodeId: a.nodeId,
+        ...(a.resume_only === true ? { resumeOnly: true } : {}),
+        // AutoDL.art 首尾帧/多图走 extras 槽，不走 references，以免 I2V 两跳再烧一张图。
+        ...(autodlVideo ? {} : (a.references ? { references: a.references } : {})),
+        ...(autodlVideo && hasI2vSlots ? { kind: 'image_to_video' } : {}),
+        ...(typeof a.firstFrameDesc === 'string' && a.firstFrameDesc.trim() ? { firstFrameDesc: a.firstFrameDesc.trim() } : {}),
+        ...(typeof a.lastFrameDesc === 'string' && a.lastFrameDesc.trim() ? { lastFrameDesc: a.lastFrameDesc.trim() } : {}),
+        ...(Object.keys(params).length ? { params } : {}),
+      }
+    },
+  },
+  {
+    name: 'nomi_assemble_timeline',
+    description:
+      '把画布上已生成的镜头按镜序追加到时间轴成片。省略 nodeIds 则排所有有结果的视频（缺视频用首帧占位）。'
+      + '已在时间轴上的镜头会跳过。项目必须在 Nomi 里打开。排完后可从时间轴导出，不要再让用户手拖。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        nodeIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '可选：只排这些节点。省略则按画布镜序排全部可成片镜头。',
+        },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    method: 'timeline.assemble',
     build: (a: Record<string, unknown>) => ({
-      projectId: a.projectId, vendor: a.vendor, modelKey: a.modelKey, intent: a.intent, prompt: a.prompt, nodeId: a.nodeId, references: a.references,
-      // 首尾帧描述直通能力核（core 自己判「模型有没有这个槽」再决定要不要多出那张图）。
-      ...(typeof a.firstFrameDesc === 'string' && a.firstFrameDesc.trim() ? { firstFrameDesc: a.firstFrameDesc.trim() } : {}),
-      ...(typeof a.lastFrameDesc === 'string' && a.lastFrameDesc.trim() ? { lastFrameDesc: a.lastFrameDesc.trim() } : {}),
-      // 画幅/时长经既有 extras/params 通道下沉到 applyHeadlessParamDefaults（caller-wins）。装配为规范化的
-      // params 交给 core.generateOnProject（它把 params 铺进 extras）——键名归一在 buildGenerateParams，
-      // 不 hardcode 任何 vendor：比例同时铺 aspect_ratio/size/aspectRatio 三别名，覆盖不同 archetype 读的键。
-      ...(() => {
-        const params = buildGenerateParams(a)
-        return Object.keys(params).length ? { params } : {}
-      })(),
+      projectId: a.projectId,
+      ...(Array.isArray(a.nodeIds) ? { nodeIds: a.nodeIds } : {}),
     }),
   },
 ] as const

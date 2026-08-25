@@ -145,7 +145,7 @@ export type SkillSummary = {
  * 面向 MCP 脊柱暴露的「导演 / 编剧技能库」= directoryName 以 director- / writer- 开头的内置技能。
  * 这是从阿泽导演台整过来、供内外 agent 按需调用的电影方法论库；workbench.* 等内部编排技能不外暴露。
  */
-const CRAFT_SKILL_PREFIXES = ["director-", "writer-"] as const;
+const CRAFT_SKILL_PREFIXES = ["director-", "writer-", "h3-"] as const;
 function isCraftSkill(directoryName: string): boolean {
   return CRAFT_SKILL_PREFIXES.some((prefix) => directoryName.startsWith(prefix));
 }

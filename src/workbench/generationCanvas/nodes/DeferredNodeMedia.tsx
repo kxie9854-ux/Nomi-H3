@@ -6,6 +6,7 @@ import { NomiImage, type NomiImageProps } from '../../../design/media'
 import { cn } from '../../../utils/cn'
 import {
   isDeferredVideoFrameReady,
+  replaceDeferredNodeVideoElement,
   type DeferredNodeMediaState,
   useDeferredNodeMediaSrc,
 } from './deferredNodeMediaQueue'
@@ -128,24 +129,15 @@ export type DeferredNodeVideoProps = React.VideoHTMLAttributes<HTMLVideoElement>
   placeholderClassName?: string
 }
 
-function releaseVideoElement(video: HTMLVideoElement | null): void {
-  if (!video) return
-  video.pause()
-  video.removeAttribute('src')
-  try {
-    video.load()
-  } catch {
-    /* Some test DOMs do not implement media loading. */
-  }
-}
-
 function ManagedDeferredNodeVideo({
   mediaKey,
   ...props
 }: React.VideoHTMLAttributes<HTMLVideoElement> & { mediaKey: string }): JSX.Element {
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
-  React.useEffect(() => () => releaseVideoElement(videoRef.current), [])
-  return <video {...props} key={mediaKey} ref={videoRef} />
+  const bindVideoRef = React.useCallback((next: HTMLVideoElement | null) => {
+    videoRef.current = replaceDeferredNodeVideoElement(videoRef.current, next)
+  }, [])
+  return <video {...props} key={mediaKey} ref={bindVideoRef} />
 }
 
 export function DeferredNodeVideo({

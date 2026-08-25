@@ -129,6 +129,9 @@ export function normalizeTimeline(input: unknown): TimelineState {
   if (!input || typeof input !== 'object') return createDefaultTimeline()
   const raw = input as Record<string, unknown>
   const inputTracks = Array.isArray(raw.tracks) ? raw.tracks : []
+  // 普通 clip 也可能因旧版重复排片/热重载竞态带着同一个 id 出现多次。片段本身可以重复使用，
+  // 但实体 id 不能重复（否则 React key 冲突，选择/删除会一次串改多段）。保留首条 id，后续重铸。
+  const seenClipIds = new Set<string>()
 
   const tracks = TIMELINE_TRACK_DEFINITIONS.map((definition) => {
     const persisted = inputTracks.find((candidate) => {
@@ -141,6 +144,15 @@ export function normalizeTimeline(input: unknown): TimelineState {
       .map((clip) => normalizeClip(clip, definition.type))
       .filter((clip): clip is TimelineClip => Boolean(clip))
       .filter((clip) => clip.type === definition.type)
+      .map((clip) => {
+        if (!seenClipIds.has(clip.id)) {
+          seenClipIds.add(clip.id)
+          return clip
+        }
+        const id = `clip-${crypto.randomUUID()}`
+        seenClipIds.add(id)
+        return { ...clip, id }
+      })
       .sort((left, right) => left.startFrame - right.startFrame)
 
     return {

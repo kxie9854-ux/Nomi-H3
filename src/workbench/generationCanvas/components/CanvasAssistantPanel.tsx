@@ -160,6 +160,7 @@ export default function CanvasAssistantPanel({
   // 面板折叠时组件仍挂载，本地态不丢）。
   const [attachments, setAttachments] = React.useState<ComposerAttachment[]>([])
   const setCollapsed = useGenerationCanvasStore((state) => state.setGenerationAiCollapsed)
+  const setDirector = useGenerationCanvasStore((state) => state.setGenerationDirector)
 
   const {
     isDragging,
@@ -617,6 +618,9 @@ export default function CanvasAssistantPanel({
             )}
             onNewConversation={handleNewConversation}
           />
+          <WorkbenchButton className="text-caption" onClick={() => setDirector('codex')}>
+            {t('generationCommon.assistant.switchCodex')}
+          </WorkbenchButton>
           <WorkbenchIconButton
             className={cn(
               'size-6 inline-grid place-items-center',

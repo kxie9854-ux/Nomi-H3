@@ -24,6 +24,8 @@ import {
 import { resolveStoryboardImageDefault, resolveStoryboardVideoDefault } from '../generationCanvas/agent/availableModels'
 import { applyCanvasToolCall, resolveCanvasToolNodeId } from '../generationCanvas/agent/applyCanvasToolCall'
 import { generationCanvasTools } from '../generationCanvas/agent/generationCanvasTools'
+import { pickExternalGraphFocus } from '../generationCanvas/agent/externalGraphFocus'
+import { FOCUS_GENERATION_NODE_EVENT } from '../generationCanvas/nodes/nodeSizing'
 
 // 能力核 A 模式实时桥 · 渲染层处理器。
 // 主进程把外部 MCP 的画布读/写/付费确认转发到这里（只在该项目正打开时路由），处理后回结果。
@@ -38,7 +40,9 @@ type SpendConfirmPayload = {
   vendor?: string
   modelKey?: string
   prompt?: string
-  /** 主进程带上：这次确认还会换来「本会话该项目后续生成免问」→ 卡上多写一句授权范围。 */
+  /** 主进程生成的不透明项目+模型服务作用域；只给 Codex 面板一次性兼容桥消费。 */
+  approvalScope?: string
+  /** 主进程带上：这次确认还会换来「本会话该项目同一模型服务后续生成免问」→ 卡上多写一句授权范围。 */
   grantsSessionTrust?: boolean
 }
 
@@ -136,6 +140,7 @@ async function confirmSpendForAgent(info: SpendConfirmPayload): Promise<{ confir
     ].join('\n'),
     confirmLabel: i18n.t('runtime.capability.confirmGenerate'),
     source: 'agent',
+    ...(info.approvalScope ? { agentApprovalScope: info.approvalScope } : {}),
     countdownMs: 60_000,
     details: [
       // 项目行放第一位：用户可能不在这个项目里，先让他知道花在哪个项目。
@@ -240,9 +245,17 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
   switch (op) {
     case 'canvas.read-doc':
       return useGenerationCanvasStore.getState().readDocumentSnapshot()
-    case 'canvas.apply':
+    case 'canvas.apply': {
+      const before = useGenerationCanvasStore.getState().nodes
       useGenerationCanvasStore.getState().applyExternalGraph(data.snapshot)
+      const after = useGenerationCanvasStore.getState().nodes
+      const focus = pickExternalGraphFocus(before, after)
+      if (focus?.mode === 'fit') useWorkbenchStore.getState().requestCanvasFit(focus.categoryId)
+      if (focus?.mode === 'focus' && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(FOCUS_GENERATION_NODE_EVENT, { detail: { nodeId: focus.nodeId } }))
+      }
       return { ok: true }
+    }
     case 'spend.confirm':
       return confirmSpendForAgent(data as SpendConfirmPayload)
     case 'plan.confirm':
@@ -421,6 +434,20 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
         nodeId,
         status: 'succeeded',
         assets: result.url ? [{ type: result.type, url: result.url, ...(result.thumbnailUrl ? { thumbnailUrl: result.thumbnailUrl } : {}) }] : [],
+      }
+    }
+    case 'timeline.assemble': {
+      const nodeIds = Array.isArray(data.nodeIds)
+        ? data.nodeIds.filter((id): id is string => typeof id === 'string' && Boolean(id.trim()))
+        : undefined
+      const result = arrangeStoryboardToTimeline(nodeIds?.length ? { nodeIds } : {})
+      useWorkbenchStore.getState().setTimelinePanelCollapsed(false)
+      if (!result.ok && result.total === 0) throw new Error('没有可排到时间轴的镜头')
+      return {
+        arranged: result.sent.length,
+        total: result.total,
+        placed: result.sent.map((item) => ({ nodeId: item.nodeId, clipId: item.clipId, startFrame: item.startFrame })),
+        skipped: result.skipped,
       }
     }
     case 'production.arrange': {

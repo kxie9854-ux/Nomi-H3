@@ -24,7 +24,7 @@ import { assembleToolResultContent } from './mcpResultPayload'
 import { stripInternalEnrichFields } from './mcpResultEnrich'
 import { createProgressReporter } from './mcpProgress'
 import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
-import { createSpendTrustStore, spendConfirmElicit } from './mcpSpendTrust'
+import { createSpendTrustScope, createSpendTrustStore, spendConfirmElicit, SPEND_TRUST_REASK_AFTER } from './mcpSpendTrust'
 import { buildIntakeMessage, buildIntakeQuestions, buildIntakeSchema, resolveIntake, summarizeIntake } from './mcpBriefIntake'
 
 // spendConfirmed=真人已在 Claude 侧确认付费；planConfirmed=真人已在聊天里批准这批方案节点
@@ -112,6 +112,11 @@ export function createMcpProtocol(transport: McpTransport) {
   // 付费的会话级信任（治「反复去软件确认」）：某项目批准一次 → 本会话该项目后续生成免问，
   // 用满 SPEND_TRUST_REASK_AFTER 次再问一次。同样挂闭包 = 随这条连接存活，断即亡（见 mcpSpendTrust.ts）。
   const spendTrust = createSpendTrustStore()
+  // 同一模型服务的多张素材常被 agent 并发提交。首张还在等真人确认/生成完成时，后张不能各自再开一条
+  // 确认通道（否则第一张在调用方面板问、第二张同时掉到 App 全局卡，用户仍被双问）。按 scope
+  // single-flight：跟随者等领头请求真正成功并建立信任后，再逐次铸自己的 node-bound grant。
+  // 领头请求被拒或失败则整批跟随者也不花钱；下一次新调用仍会重新问，安全边界不放宽。
+  const pendingSpendApprovals = new Map<string, Promise<boolean>>()
   // 服务端→客户端请求自管 id 与 pending，等客户端回响应。
   let serverReqSeq = 0
   const pendingServerReqs = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
@@ -189,11 +194,13 @@ export function createMcpProtocol(transport: McpTransport) {
     message: string
     title: string
     description: string
+    meta?: Record<string, unknown>
   }): Promise<{ supported: boolean; confirmed?: boolean }> {
     if (!clientSupportsElicitation) return { supported: false }
     try {
       const res = (await sendServerRequest('elicitation/create', {
         message: input.message,
+        ...(input.meta ? { _meta: input.meta } : {}),
         requestedSchema: {
           type: 'object',
           properties: {
@@ -461,44 +468,95 @@ export function createMcpProtocol(transport: McpTransport) {
         // elicitSpendConfirm 在客户端没声明 elicitation 时返回 supported:false，故它就是①/②的唯一判据
         // （不另读 clientSupportsElicitation，免两处能力判断漂移）。enforcement 仍在主进程硬闸。
         if (tool.name === 'nomi_generate') {
+          // 恢复已有 provider task 是只读查询，不花新额度。能力核会再次硬校验 taskId：没有可续查任务就拒绝，
+          // 绝不因这个 flag 回退成新提交。必须在 spend gate 前分流，否则「恢复」仍会无意义地问一次钱。
+          if (built.resumeOnly === true) {
+            const result = await transport.invoke(tool.method, built)
+            reply(id, buildToolResultPayload(tool.name, args, result))
+            return
+          }
           const spendProjectId = typeof built.projectId === 'string' ? built.projectId : ''
+          const spendScope = createSpendTrustScope(spendProjectId, built.vendor, built.modelKey)
           // 会话级信任命中 → 这次不问（治「反复确认」，见 mcpSpendTrust.ts）。硬闸不受影响：
           // 下游照旧逐次铸 node-bound 令牌、assertAndConsumeSpendGrant 逐次校验。
-          if (spendTrust.isTrusted(spendProjectId)) {
-            spendTrust.countPass(spendProjectId)
+          if (spendTrust.isTrusted(spendScope)) {
+            spendTrust.countPass(spendScope)
             const result = await transport.invoke(tool.method, built, { spendConfirmed: true })
             reply(id, buildToolResultPayload(tool.name, args, result))
             return
           }
-          const reask = spendTrust.hasApprovedBefore(spendProjectId)
-          const confirm = await elicitBooleanConfirm(spendConfirmElicit(describeSpend(args), reask))
-          if (confirm.supported) {
-            if (!confirm.confirmed) {
-              reply(id, { content: [{ type: 'text', text: '已取消：你未确认这次付费生成，未生成、未消耗额度。' }], isError: true })
+          const pendingApproval = spendScope ? pendingSpendApprovals.get(spendScope) : undefined
+          if (pendingApproval) {
+            const approved = await pendingApproval
+            if (!approved || !spendTrust.isTrusted(spendScope)) {
+              reply(id, { content: [{ type: 'text', text: '已取消：同批次的付费生成未获确认或执行失败，未生成、未消耗本次额度。' }], isError: true })
               return
             }
+            spendTrust.countPass(spendScope)
             const result = await transport.invoke(tool.method, built, { spendConfirmed: true })
-            // 只在真跑成功后记信任：invoke 抛错（无令牌/供应商失败）不该换来一段免问期。
-            spendTrust.trust(spendProjectId)
             reply(id, buildToolResultPayload(tool.name, args, result))
             return
           }
-          if (!transport.isAppOpen()) {
-            reply(id, {
-              content: [{ type: 'text', text: '已暂停：当前客户端不支持弹确认，Nomi 也没打开——没有地方能确认这次付费生成。请打开 Nomi 后再触发生成。节点/提示词若已通过其它工具写入则已保存。' }],
-              isError: true,
-            })
-            return
+          let settleApproval!: (approved: boolean) => void
+          const approvalFlight = new Promise<boolean>((resolve) => { settleApproval = resolve })
+          if (spendScope) pendingSpendApprovals.set(spendScope, approvalFlight)
+          let approvalSettled = false
+          const settle = (approved: boolean): void => {
+            if (approvalSettled) return
+            approvalSettled = true
+            settleApproval(approved)
           }
-          // App 开着但客户端问不了 → 走应用内确认卡。**invoke 成功即等于真人点了卡**：没点 → 无令牌 →
-          // 主进程 assertAndConsumeSpendGrant 抛错 → invoke 失败。故成功后同样记信任（这条路也要免掉
-          // 「反复」，否则 Claude Code 这类不声明 elicitation 的客户端一点好处都拿不到）。
-          // grantsSessionTrust 让那张卡把授权范围写在脸上——用户以为批的是「这一张」，别让他不知情地批掉一段。
-          built.grantsSessionTrust = true
-          const cardResult = await transport.invoke(tool.method, built)
-          spendTrust.trust(spendProjectId)
-          reply(id, buildToolResultPayload(tool.name, args, cardResult))
-          return
+          try {
+            const reask = spendTrust.hasApprovedBefore(spendScope)
+            const confirm = await elicitBooleanConfirm({
+              ...spendConfirmElicit(describeSpend(args), reask),
+              // MCP _meta 是给宿主的旁路信息，不进表单字段。嵌入式 Codex 用它把真人这次点击
+              // 绑定到同项目同模型服务；兼容某些 app-server 构建未把 spendConfirmed 继续过线的情况。
+              meta: {
+                nomiSpendApprovalScope: spendScope,
+                nomiSpendApprovalPasses: SPEND_TRUST_REASK_AFTER,
+              },
+            })
+            if (confirm.supported) {
+              if (!confirm.confirmed) {
+                settle(false)
+                reply(id, { content: [{ type: 'text', text: '已取消：你未确认这次付费生成，未生成、未消耗额度。' }], isError: true })
+                return
+              }
+              const result = await transport.invoke(tool.method, built, { spendConfirmed: true })
+              // 只在真跑成功后记信任：invoke 抛错（无令牌/供应商失败）不该换来一段免问期。
+              spendTrust.trust(spendScope)
+              settle(true)
+              reply(id, buildToolResultPayload(tool.name, args, result))
+              return
+            }
+            if (!transport.isAppOpen()) {
+              settle(false)
+              reply(id, {
+                content: [{ type: 'text', text: '已暂停：当前客户端不支持弹确认，Nomi 也没打开——没有地方能确认这次付费生成。请打开 Nomi 后再触发生成。节点/提示词若已通过其它工具写入则已保存。' }],
+                isError: true,
+              })
+              return
+            }
+            // App 开着但客户端问不了 → 走应用内确认卡。**invoke 成功即等于真人点了卡**：没点 → 无令牌 →
+            // 主进程 assertAndConsumeSpendGrant 抛错 → invoke 失败。故成功后同样记信任（这条路也要免掉
+            // 「反复」，否则 Claude Code 这类不声明 elicitation 的客户端一点好处都拿不到）。
+            // grantsSessionTrust 让那张卡把授权范围写在脸上——用户以为批的是「这一张」，别让他不知情地批掉一段。
+            built.grantsSessionTrust = true
+            const cardResult = await transport.invoke(tool.method, built)
+            spendTrust.trust(spendScope)
+            settle(true)
+            reply(id, buildToolResultPayload(tool.name, args, cardResult))
+            return
+          } catch (error) {
+            settle(false)
+            throw error
+          } finally {
+            settle(false)
+            if (spendScope && pendingSpendApprovals.get(spendScope) === approvalFlight) {
+              pendingSpendApprovals.delete(spendScope)
+            }
+          }
         }
         const result = await transport.invoke(tool.method, built)
         reply(id, buildToolResultPayload(tool.name, args, result))

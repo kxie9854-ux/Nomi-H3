@@ -244,11 +244,9 @@ export async function fetchTaskResult(payload: unknown): Promise<{ vendor: strin
   // 缓存 miss：先试无状态重建（重启/驱逐后仍能续查的治本点）。重建得了就走同一段 query。
   const rebuilt = rebuildCachedTaskFromPayload(taskId, raw);
   if (rebuilt) {
-    try {
-      return await executeTaskQuery(taskId, rebuilt);
-    } catch {
-      // 重建后查询失败(网络/上游) → 落回诚实诊断，别把可重试当未知 id。
-    }
+    // 能重建说明 taskId/vendor/model/mapping 都是真的。查询网络失败必须原样抛给上层收敛成 recoverable；
+    // 吞掉后落到「未知任务」会把一个可续查的已付费任务误判成终态，还诱导用户重新下单。
+    return executeTaskQuery(taskId, rebuilt);
   }
 
   // 区分两种 miss：曾受理但被驱逐/过期(可能 vendor 侧已完成) vs 真·未知 id（修 P1）。

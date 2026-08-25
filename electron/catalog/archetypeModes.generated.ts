@@ -147,6 +147,14 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
       "ref": "image_to_video"
     }
   },
+  "minimax-h3-autodl-art": {
+    "defaultModeId": "t2v",
+    "modes": {
+      "t2v": "text_to_video",
+      "firstlast": "image_to_video",
+      "ref": "image_to_video"
+    }
+  },
   "minimax-h3-regeneration": {
     "defaultModeId": "regenerate",
     "modes": {
