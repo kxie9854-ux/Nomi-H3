@@ -19,6 +19,7 @@ import {
   MCP_CONFIG_VERSION,
   MCP_CONFIG_VERSION_ENV,
   installMcp,
+  mcpServerEntry,
   packagedMcpLauncherAvailable,
   readMcpInfo,
   uninstallMcp,
@@ -43,9 +44,15 @@ function claudeJson(): string {
 beforeEach(() => {
   homeDir = tempHome()
   isPackaged = false
+  vi.stubEnv('NOMI_PROJECTS_DIR', path.join(homeDir, 'projects'))
+  vi.stubEnv('NOMI_SETTINGS_DIR', homeDir)
+  vi.stubEnv('NOMI_DESKTOP_DEV', '1')
+  vi.stubEnv('VITE_DEV_SERVER_URL', 'http://127.0.0.1:5273/index.html#/studio')
+  vi.stubEnv('NOMI_RENDERER_URL', 'http://127.0.0.1:5273')
   ensureToken()
 })
 afterEach(() => {
+  vi.unstubAllEnvs()
   for (const r of roots.splice(0)) fs.rmSync(r, { recursive: true, force: true })
 })
 
@@ -99,6 +106,31 @@ describe('capabilityCore/mcpConfig', () => {
       after.mcpServers.nomi.env[MCP_CLIENT_PROOF_ENV],
     )).toBe('claude')
     expect(after.mcpServers.nomi.args[0]).toBe('/fake/repo/dist-electron/capabilityCore/mcpNodeLauncher.js')
+  })
+
+  it('development cold start preserves the running Electron profile, library and renderer identity', () => {
+    const entry = mcpServerEntry('codex')
+    expect(entry.env).toMatchObject({
+      NOMI_ELECTRON_USER_DATA_DIR: homeDir,
+      NOMI_PROJECTS_DIR: path.join(homeDir, 'projects'),
+      NOMI_SETTINGS_DIR: homeDir,
+      NOMI_DESKTOP_DEV: '1',
+      VITE_DEV_SERVER_URL: 'http://127.0.0.1:5273/index.html#/studio',
+      NOMI_RENDERER_URL: 'http://127.0.0.1:5273',
+      [MCP_CONFIG_KIND_ENV]: 'development',
+    })
+  })
+
+  it('packaged launchers never inherit development-only profile or renderer variables', () => {
+    isPackaged = true
+    const entry = mcpServerEntry('codex')
+    expect(entry.env?.[MCP_CONFIG_KIND_ENV]).toBe('packaged')
+    expect(entry.env?.NOMI_ELECTRON_USER_DATA_DIR).toBeUndefined()
+    expect(entry.env?.NOMI_PROJECTS_DIR).toBeUndefined()
+    expect(entry.env?.NOMI_SETTINGS_DIR).toBeUndefined()
+    expect(entry.env?.NOMI_DESKTOP_DEV).toBeUndefined()
+    expect(entry.env?.VITE_DEV_SERVER_URL).toBeUndefined()
+    expect(entry.env?.NOMI_RENDERER_URL).toBeUndefined()
   })
 
   it('install 在 ~/.claude.json 不存在时也能建出来', () => {

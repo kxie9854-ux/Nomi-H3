@@ -22,7 +22,9 @@ import {
   verifyMcpClient,
   type AuthenticatedMcpClient,
 } from './security'
+import { getProjectsRoot, PROJECT_ROOT_ENV } from '../runtimePaths'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
+import { getSettingsRoot, SETTINGS_ROOT_ENV } from '../settings/settingsRoot'
 
 const SERVER_NAME = 'nomi'
 export const MCP_CONFIG_VERSION_ENV = 'NOMI_MCP_CONFIG_VERSION'
@@ -95,7 +97,12 @@ function installedMacLauncher(): string | null {
   return packagedMcpLauncherAvailable(candidate) ? candidate : null
 }
 
-function nodeLauncherEntry(appCommand: string, appArgs: string[], kind: McpLauncherKind): LauncherEntry {
+function nodeLauncherEntry(
+  appCommand: string,
+  appArgs: string[],
+  kind: McpLauncherKind,
+  appEnv: Record<string, string> = {},
+): LauncherEntry {
   const packaged = kind === 'packaged'
   const packagedLauncher = packaged ? packagedNodeLauncherPaths(appCommand) : null
   const command = packagedLauncher?.command ?? appCommand
@@ -106,6 +113,7 @@ function nodeLauncherEntry(appCommand: string, appArgs: string[], kind: McpLaunc
     args: [launcherScript],
     kind,
     env: {
+      ...appEnv,
       ELECTRON_RUN_AS_NODE: '1',
       NOMI_MCP_APP_COMMAND: appCommand,
       NOMI_MCP_APP_ARGS: JSON.stringify(appArgs),
@@ -113,11 +121,32 @@ function nodeLauncherEntry(appCommand: string, appArgs: string[], kind: McpLaunc
   }
 }
 
+/**
+ * The dev app's identity is its Electron profile, not just the repo path.
+ *
+ * `main.ts` sets userData before requesting the single-instance lock. If the MCP
+ * cold start loses that path, Electron uses the default profile, obtains a
+ * different lock, and creates a second GUI writer for the same project library.
+ * Only copy the non-secret environment needed to recreate the running dev app.
+ */
+function developmentAppEnv(): Record<string, string> {
+  const env: Record<string, string> = {
+    NOMI_ELECTRON_USER_DATA_DIR: app.getPath('userData'),
+    [PROJECT_ROOT_ENV]: getProjectsRoot(),
+    [SETTINGS_ROOT_ENV]: getSettingsRoot(),
+  }
+  for (const key of ['NOMI_DESKTOP_DEV', 'VITE_DEV_SERVER_URL', 'NOMI_RENDERER_URL'] as const) {
+    const value = String(process.env[key] || '').trim()
+    if (value) env[key] = value
+  }
+  return env
+}
+
 function launcherEntry(): LauncherEntry {
   if (app.isPackaged) return nodeLauncherEntry(process.execPath, [], 'packaged')
   const installed = installedMacLauncher()
   if (installed) return nodeLauncherEntry(installed, [], 'packaged')
-  return nodeLauncherEntry(process.execPath, [app.getAppPath()], 'development')
+  return nodeLauncherEntry(process.execPath, [app.getAppPath()], 'development', developmentAppEnv())
 }
 
 /**
