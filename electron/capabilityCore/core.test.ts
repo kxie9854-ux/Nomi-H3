@@ -8,6 +8,7 @@ import {
   connectProjectNodes,
   createNamedProject,
   deleteProjectNodes,
+  freezeProjectNodes,
   generateOnProject,
   groupProjectNodes,
   listAllProjects,
@@ -232,6 +233,49 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
       },
     )
     expect(kind).toBe('text_to_image')
+  })
+
+  it('多镜身份锁链：定妆图落卡 → freeze → character_ref 连镜 → 静帧生成不传 references 也能吃到定妆图并走 image_edit', async () => {
+    // 导演协议（SKILL.md lock-look 关口）的机制面：nomi_freeze_nodes 之后，character_ref 入边是
+    // 静帧参考图的**唯一来源**（generate 没传 input.references）——这条兜底断了，静帧就退回纯文生，
+    // 跨镜换脸就从这里进来。端到端钉死：出图落卡 → 冻结 → 连边 → 生成走 image_edit 带定妆图。
+    const project = createNamedProject('多镜身份锁链测试')
+    const gateway = createDiskGateway(project.id)
+
+    const { ids } = await addProjectNodes(gateway, [
+      { kind: 'character', title: '林夏 · 定妆', prompt: '齐肩黑发、左眉一颗痣，红色校服，正面平光定妆照' },
+      { kind: 'image', title: 'S01 首帧', prompt: '林夏倚护栏远望，黄昏逆光' },
+    ])
+    const [characterId, stillId] = ids!
+
+    // 定妆照出图，url 落回角色卡（freeze 谓词只认已出图的锚卡）。
+    await generateOnProject(
+      { projectId: project.id, nodeId: characterId, intent: 'image', prompt: '齐肩黑发、左眉一颗痣，红色校服定妆照', vendor: 'codex-local', modelKey: 'codex-imagegen' },
+      gateway,
+      async () => ({ id: 't-look', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://asset/p/linxia-look.png' }] }),
+    )
+
+    await connectProjectNodes(gateway, [{ source: characterId, target: stillId, mode: 'character_ref' }])
+    const freeze = await freezeProjectNodes(gateway, [characterId])
+    expect(freeze.frozen).toEqual([characterId])
+
+    const captured: Array<{ kind: string; referenceImages: unknown }> = []
+    const out = await generateOnProject(
+      { projectId: project.id, nodeId: stillId, intent: 'image', vendor: 'codex-local', modelKey: 'codex-imagegen' },
+      gateway,
+      async (payload) => {
+        const req = payload.request as { kind: string; extras: Record<string, unknown> }
+        captured.push({ kind: req.kind, referenceImages: req.extras.referenceImages })
+        return { id: 't-still', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://asset/p/s01-first.png' }] }
+      },
+    ) as { advisories?: string[] }
+
+    expect(captured).toHaveLength(1)
+    expect(captured[0].kind).toBe('image_edit')
+    expect(captured[0].referenceImages).toEqual(['nomi-local://asset/p/linxia-look.png'])
+    expect(out.status).toBe('succeeded')
+    // 已冻结 → 不再弹「还没冻结定妆」提醒（提醒不拦，但冻结后应消失）。
+    expect((out.advisories || []).join('\n')).not.toContain('还没冻结定妆')
   })
 
   // W1d：kind 按目录 derive——catalog 里模型声明了参考模式时，带参考生成用它选 kind（不硬编码 defaultKind）。

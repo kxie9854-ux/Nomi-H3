@@ -388,6 +388,63 @@ export function setNodePrompt(
   return { snapshot: next, changed: true }
 }
 
+export type FreezeNodesResult = {
+  snapshot: CanvasSnapshot
+  frozen: string[]
+  skipped: Array<{ nodeId: string; reason: string }>
+}
+
+function nodeResultUrl(node: CanvasNode): string {
+  const result = node.result && typeof node.result === 'object' ? node.result as { url?: unknown } : null
+  return typeof result?.url === 'string' ? result.url.trim() : ''
+}
+
+function isAlreadyFrozen(node: CanvasNode): boolean {
+  const meta = node.meta && typeof node.meta === 'object' ? node.meta : null
+  const mark = meta?.[ANCHOR_META_KEYS.frozen]
+  if (!mark || typeof mark !== 'object' || Array.isArray(mark)) return false
+  const at = (mark as { at?: unknown }).at
+  return typeof at === 'number' && Number.isFinite(at) && at > 0
+}
+
+/** 给已出图的角色/场景/道具卡打冻结标记。幂等。非锚或没图则跳过。 */
+export function freezeNodes(snapshot: CanvasSnapshot, nodeIds: string[], frozenAt = Date.now()): FreezeNodesResult {
+  const wanted = Array.from(new Set(nodeIds.map((id) => String(id || '').trim()).filter(Boolean)))
+  const next = cloneSnapshot(snapshot)
+  const frozen: string[] = []
+  const skipped: FreezeNodesResult['skipped'] = []
+  for (const nodeId of wanted) {
+    const index = next.nodes.findIndex((node) => node.id === nodeId)
+    if (index < 0) {
+      skipped.push({ nodeId, reason: '节点不存在' })
+      continue
+    }
+    const node = next.nodes[index]
+    if (!isVisualAnchorKind(node.kind)) {
+      skipped.push({ nodeId, reason: '只有角色/场景/道具卡能冻结定妆' })
+      continue
+    }
+    if (isAlreadyFrozen(node)) {
+      frozen.push(nodeId)
+      continue
+    }
+    if (!nodeResultUrl(node)) {
+      skipped.push({ nodeId, reason: '还没有定妆图，先生成再冻结' })
+      continue
+    }
+    next.nodes[index] = {
+      ...node,
+      meta: {
+        ...(node.meta && typeof node.meta === 'object' ? node.meta : {}),
+        [ANCHOR_META_KEYS.referenceSheet]: true,
+        [ANCHOR_META_KEYS.frozen]: { at: frozenAt, by: 'user' },
+      },
+    }
+    frozen.push(nodeId)
+  }
+  return { snapshot: next, frozen, skipped }
+}
+
 /** 删节点 + 其关联边（入边出边都删，避免悬挂边）。返回新快照 + 实删 id。 */
 export function deleteNodes(
   snapshot: CanvasSnapshot,

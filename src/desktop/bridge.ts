@@ -1,4 +1,5 @@
 import type { DirectorHistory } from '../../electron/codexAppServer/directorHistory'
+import type { DirectorSkillDto } from '../../electron/codexAppServer/directorSkills'
 import type { ExportJobEvent, ExportJobSnapshot } from '../../electron/export/exportJobManager'
 import type { WorkspaceFileListResult } from '../../electron/workspace/workspaceFileIndex'
 import type { ProviderKind } from './providerKind'
@@ -731,7 +732,9 @@ export type DesktopBridge = DesktopMediaBridge & {
     status: () => Promise<{ ready: boolean; account: { type?: string; email?: string | null; planType?: string | null } | null }>
     ensure: (cwd?: string) => Promise<{ account: { type?: string; email?: string | null; planType?: string | null } | null }>
     login: () => Promise<{ authUrl?: string }>
-    send: (payload: { text: string; cwd?: string; projectId?: string; canvasContext?: string }) => Promise<{ ok: boolean }>
+    send: (payload: { text: string; cwd?: string; projectId?: string; canvasContext?: string; skillIds?: string[]; mode?: 'none' | 'film' | 'author' }) => Promise<{ ok: boolean }>
+    listSkills: () => Promise<DirectorSkillDto[]>
+    importSkill: (payload: { markdown: string; fileName?: string }) => Promise<DirectorSkillDto>
     readHistory: (projectId: string) => Promise<DirectorHistory>
     interrupt: () => Promise<{ ok: boolean }>
     respondElicitation: (requestId: string, confirmed: boolean) => Promise<{ ok: boolean }>

@@ -88,14 +88,14 @@ Write durable artifacts to the open canvas as you go. Do not dump the whole film
 
 1. `kind=text` 项目简报
 2. `kind=text` 故事大纲 (multi-shot only)
-3. `kind=character` identity lock + Codex `kind=image` card (multi-shot, if there is a recurring subject)
-4. `kind=scene` lock + Codex `kind=image` environment card, **no people** (multi-shot, if the place repeats)
+3. `kind=character` identity lock still generated **on that character node** with Codex imagegen (multi-shot, if there is a recurring subject). Freeze after the user locks.
+4. `kind=scene` lock still on the scene node, **no people** (multi-shot, if the place repeats). Freeze after lock.
 5. `kind=text` 镜头表 (multi-shot) or one `kind=shot` (1-shot)
 6. Per shot: `kind=shot` + first/last `kind=image` + `kind=video` (H3, do not generate yet)
 7. Connect first still → video `mode=first_frame`, last still → video `mode=last_frame`
 8. Generate stills, **STOP**
 9. After confirm: generate H3 on the video node
-10. After the user approves the clips: `nomi_assemble_timeline` (project must be open). That lays shots onto the timeline in order. Do not tell the user to drag clips by hand.
+10. After the user approves the clips: BGM gate (import a local file or skip — never generate music) → `nomi_assemble_timeline` → `nomi_export_timeline` (project must be open). That lays shots (and BGM) onto the timeline, then ffmpeg-exports MP4 and drops a 剪辑成片 card. Do not tell the user to drag clips or click 导出 MP4 in 预览区.
 
 ## STEP 1 — brief
 
@@ -107,7 +107,19 @@ Write durable artifacts to the open canvas as you go. Do not dump the whole film
 
 ## STEP 3–4 — cards (multi-shot only)
 
-Recurring subject → character node + Codex still. Recurring place → scene node + Codex still with no people. Gate after the main cards: lock / regenerate / tweak. Changing a locked card means redoing stills (and H3) that depend on it.
+Recurring subject → one `kind=character` node. Bind `vendor=codex-local` `modelKey=codex-imagegen`. Prompt is a **lock still**: same subject, face/markings/coat, no busy location, encode 9:16. Generate **on that character node**. Recurring place → one `kind=scene` node, **no people**, same stills path.
+
+Then **STOP**:
+
+```
+:::choices
+lock-look | 锁定定妆
+regenerate-look | 重出定妆
+tweak-look | 改描述再出
+:::
+```
+
+After `lock-look`, call `nomi_freeze_nodes` with those card ids. Do **not** generate any shot stills before freeze. Changing a frozen card means redoing stills (and H3) that depend on it.
 
 ## STEP 5 — shot table (multi-shot only)
 
@@ -124,10 +136,10 @@ Self-check before the approve gate: handoff chain has no contradiction; every se
 Do **not** `nomi_generate` video on a new ask. Do **not** invent node ids. `nomi_connect_nodes` skips missing endpoints; guessed ids look like a blank canvas plus “源节点不存在”.
 
 1. `nomi_read_canvas` first. Reuse the open project’s ids.
-2. Add **one** `nomi_add_nodes` batch: `shot` + first `image` + last `image` + `video`. Bind stills to `codex-imagegen`. Prompt is a **static** frame (no camera move). Encode 9:16 or 16:9 in the still prompt — Codex imagegen has no ratio param. First and last still: same subject, same aspect, last frame is the motion landing. Video node: official H3 prompt (motion). Do not generate yet.
-3. Connect **only** the ids returned by that add, in order: first still → video `mode=first_frame`; last still → video `mode=last_frame`.
+2. Add **one** `nomi_add_nodes` batch: `shot` + first `image` + last `image` + `video`. Bind stills to `codex-imagegen`. Prompt is a **static** frame (no camera move). Encode 9:16 or 16:9 in the still prompt — Codex imagegen has no ratio param. First and last still: same subject as the frozen card, same aspect, last frame is the motion landing. Repeat the lock-still identity in the prompt (markings, coat). Video node: official H3 prompt (motion). Do not generate yet.
+3. Connect **only** the ids returned by that add, plus frozen cards: character card → first still `mode=character_ref`; character card → last still `mode=character_ref`; scene card → both stills `mode=composition_ref` if the place repeats; first still → video `mode=first_frame`; last still → video `mode=last_frame`. Do **not** also connect the character card to the video when using fl2va.
 4. Call `nomi_group_nodes` once for that shot's returned `shot` + first `image` + last `image` + `video` ids; use the shot title as the group name. Repeating the same call is safe and reuses the existing group.
-5. `nomi_generate` **intent=image** on the two still ids. Then **STOP** with a gate: `确认出视频` / revise stills / `跳过静帧` (t2va).
+5. `nomi_generate` **intent=image** on the two still ids (connected character_ref fills Codex imagegen `image_edit`). Then **STOP** with a gate: `确认出视频` / revise stills / `跳过静帧` (t2va). If identity drifted vs the frozen card, regenerate stills — do not run H3 yet.
 6. After confirm: `nomi_generate` intent=video, duration `5`, resolution `480p竖` unless STEP 0 overrode. Connected first/last frames fill the slots. Never first-frame-only I2VA.
 7. One still with a result and no last frame → ref2va, not fl2va.
 8. `跳过静帧` / `直接出视频` → t2va on the video node only.
@@ -151,20 +163,29 @@ Video: always `vendor=autodl-art`, `modelKey=autodl-art-h3`, `intent=video`, `du
 
 After each H3 clip: look at it, then gate approve / redo that shot. After all shots are approved:
 
-1. If the user wants BGM, they must supply a local audio file. Call `nomi_import_asset` with the absolute path, then `nomi_add_nodes` with `kind=audio` and `assetUrl` set to the returned `nomi-local://` URL. Do **not** generate music or TTS as a stand-in for BGM. If they have no file, stop on a choice card asking for a path — do not skip silently.
+1. BGM. If an audio node already has a `nomi-local://` asset, skip this gate. Otherwise STOP on one card:
+
+```
+:::choices
+skip-bgm | 不配乐，直接剪成片
+import-bgm | 我有本机音频文件
+:::
+```
+
+   `import-bgm` needs an absolute path: `nomi_import_asset` then `nomi_add_nodes` `kind=audio` with `assetUrl` set to the returned `nomi-local://` URL. Do **not** generate music or TTS as a stand-in. If they pick import but have no path, ask for the path — do not skip silently.
 2. Call `nomi_assemble_timeline` with the open `projectId` (omit `nodeIds` unless the user picked a subset). That lays video shots in order **and** imported audio onto the audio track.
-3. Tell the user to export from the timeline. Export creates a 成片 video card on the canvas. Do not invent a concat file.
+3. Call `nomi_export_timeline` with the same `projectId`. That runs ffmpeg hard-cut export and lands a 剪辑成片 video card on the canvas. Do **not** tell the user to go to 预览区 and click 导出 MP4. Do not invent a concat file.
 
 Then STOP:
 
 ```
 :::choices
-approve-film | 成片已上时间轴
+approve-film | 成片已导出
 redo-shot | 重做其中一镜
 :::
 ```
 
-Final video must not contain storyboard labels, arrows, or panel frames. The project must be open in Nomi or assemble returns 409.
+Final video must not contain storyboard labels, arrows, or panel frames. The project must be open in Nomi or assemble/export returns 409. Empty timeline export fails until assemble has placed shots.
 
 ## Stops
 
@@ -173,3 +194,4 @@ Final video must not contain storyboard labels, arrows, or panel frames. The pro
 - `keyStatus` is not `ok`.
 - A paid task already has a `task_id`.
 - A gate is on screen and the user has not picked.
+- Multi-shot shot stills while a recurring character/scene card exists but is not frozen.

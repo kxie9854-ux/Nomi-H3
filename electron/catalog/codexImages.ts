@@ -15,7 +15,7 @@ const PROVIDER_META = { task_id: "submit_id" };
 
 export const CODEX_LOCAL_VENDOR_SEED = {
   key: "codex-local",
-  name: "Codex 本地生图（实验）",
+  name: "Codex 本地（登录额度）",
   baseUrl: "local://codex",
   authType: "none" as const,
   authHeader: null,

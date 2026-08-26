@@ -23,6 +23,7 @@ import {
   addNodes,
   connectNodes,
   deleteNodes,
+  freezeNodes,
   groupNodes,
   readCanvas,
   setNodePrompt,
@@ -211,6 +212,15 @@ export async function setProjectNodePrompt(gateway: ProjectGateway, nodeId: stri
   const { snapshot, changed } = setNodePrompt(await gateway.readDoc(), nodeId, prompt, title)
   if (changed) await gateway.apply(snapshot)
   return { changed }
+}
+
+export async function freezeProjectNodes(gateway: ProjectGateway, nodeIds: string[]): Promise<{
+  frozen: string[]
+  skipped: Array<{ nodeId: string; reason: string }>
+}> {
+  const result = freezeNodes(await gateway.readDoc(), nodeIds)
+  if (result.frozen.length) await gateway.apply(result.snapshot)
+  return { frozen: result.frozen, skipped: result.skipped }
 }
 
 export async function deleteProjectNodes(gateway: ProjectGateway, nodeIds: string[]): Promise<{ deleted: string[] }> {

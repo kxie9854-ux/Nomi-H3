@@ -226,7 +226,7 @@ function quoteWindowsCmdArg(arg: string): string {
   return `"${arg.replace(/"/g, "\\\"")}"`;
 }
 
-function needsCmdWrapper(bin: string, platform = process.platform): boolean {
+export function needsCmdWrapper(bin: string, platform = process.platform): boolean {
   return platform === "win32" && /\.(?:cmd|bat)$/i.test(bin);
 }
 

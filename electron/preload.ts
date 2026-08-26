@@ -573,6 +573,9 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     ensure: (cwd?: string) => ipcRenderer.invoke("nomi:codex:ensure", cwd),
     login: () => ipcRenderer.invoke("nomi:codex:login"),
     send: (payload: unknown) => ipcRenderer.invoke("nomi:codex:send", payload),
+    listSkills: () => ipcRenderer.invoke("nomi:codex:list-skills"),
+    importSkill: (payload: { markdown: string; fileName?: string }) =>
+      ipcRenderer.invoke("nomi:codex:import-skill", payload),
     readHistory: (projectId: string) => ipcRenderer.invoke("nomi:codex:read-history", projectId),
     interrupt: () => ipcRenderer.invoke("nomi:codex:interrupt"),
     respondElicitation: (requestId: string, confirmed: boolean) =>

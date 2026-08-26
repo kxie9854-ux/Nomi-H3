@@ -9,6 +9,8 @@ export function humanizeDirectorActivity(event: DirectorActivityEvent): string |
   const blob = [event.type, event.tool, event.text].filter(Boolean).join(' ').toLowerCase()
   if (!blob.trim()) return null
   if (/approval|permissions|filechange|execcommand|elicitation/.test(blob)) return null
+  if (/save_director_skill|director\.saveSkill/.test(blob)) return '正在保存技能'
+  if (/export_timeline|timeline\.export/.test(blob)) return '正在导出成片'
   if (/assemble_timeline|timeline\.assemble/.test(blob)) return '正在把成片排上时间轴'
   if (/nomi_generate/.test(blob) && /video/.test(blob)) return '正在出视频'
   if (/nomi_generate/.test(blob) && /image/.test(blob)) return '正在出静帧'

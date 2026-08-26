@@ -6,14 +6,7 @@ import { getProjectsRoot, PROJECT_ROOT_ENV } from "../runtimePaths";
 import { getSettingsRoot, SETTINGS_ROOT_ENV } from "../settings/settingsRoot";
 import { wrapDirectorUserText } from "./directorUserText";
 import { getCodexAppServerHost, type CodexUiEvent } from "./host";
-
-function skillsRoot(): string {
-  return path.join(app.getAppPath(), "skills", "h3-autodl-art-director");
-}
-
-function skillPath(): string {
-  return path.join(skillsRoot(), "SKILL.md");
-}
+import { importDirectorSkillMarkdown, listDirectorSkills, parseDirectorSkillMode, resolveTurnSkills } from "./directorSkills";
 
 function directorCwd(): string {
   const dir = path.join(getSettingsRoot(), "codex-director");
@@ -72,19 +65,32 @@ export function registerCodexAppServerIpc(): void {
   });
   ipcMain.handle("nomi:codex:send", async (_event, payload: unknown) => {
     const record = payload && typeof payload === "object"
-      ? (payload as { text?: unknown; cwd?: unknown; projectId?: unknown; canvasContext?: unknown })
+      ? (payload as { text?: unknown; cwd?: unknown; projectId?: unknown; canvasContext?: unknown; skillIds?: unknown; mode?: unknown })
       : {};
     const text = typeof record.text === "string" ? record.text.trim() : "";
     if (!text) throw new Error("请先写一句给 Codex 的指令");
     const projectId = typeof record.projectId === "string" ? record.projectId.trim() : "";
     const canvasContext = typeof record.canvasContext === "string" ? record.canvasContext : "";
+    const skillIds = Array.isArray(record.skillIds)
+      ? record.skillIds.filter((id): id is string => typeof id === "string")
+      : [];
+    const mode = parseDirectorSkillMode(record.mode);
     await host.ensure(resolveCwd(record.cwd), path.join(app.getAppPath(), "skills"));
     await host.send(
       wrapDirectorUserText(text, { projectId, canvasContext }),
-      skillPath(),
+      resolveTurnSkills(app.getAppPath(), getSettingsRoot(), mode, skillIds),
       projectId,
     );
     return { ok: true };
+  });
+  ipcMain.handle("nomi:codex:list-skills", () => {
+    return listDirectorSkills(app.getAppPath(), getSettingsRoot());
+  });
+  ipcMain.handle("nomi:codex:import-skill", (_event, payload: unknown) => {
+    const record = payload && typeof payload === "object" ? payload as { markdown?: unknown; fileName?: unknown } : {};
+    const markdown = typeof record.markdown === "string" ? record.markdown : "";
+    const fileName = typeof record.fileName === "string" ? record.fileName : undefined;
+    return importDirectorSkillMarkdown(getSettingsRoot(), markdown, fileName);
   });
   ipcMain.handle("nomi:codex:read-history", async (_event, projectId: unknown) => {
     await host.ensure(directorCwd(), path.join(app.getAppPath(), "skills"));

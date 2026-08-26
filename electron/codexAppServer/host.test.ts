@@ -213,6 +213,30 @@ describe("project-scoped director threads", () => {
     expect(calls.filter((call) => call.method === CODEX_THREAD_START)).toHaveLength(2);
   });
 
+  it("sends no skill item in none mode", async () => {
+    const { rpc, calls } = fakeHostRpc();
+    const host = await readyHost(tempSettingsRoot(), rpc);
+    await host.send("idea", null, "project-a");
+    const turn = calls.find((call) => call.method === "turn/start");
+    expect(turn?.params).toMatchObject({
+      input: [{ type: "text", text: "idea" }],
+    });
+  });
+
+  it("attaches overlay skills after the H3 spine", async () => {
+    const { rpc, calls } = fakeHostRpc();
+    const host = await readyHost(tempSettingsRoot(), rpc);
+    await host.send("idea", "/skill.md", "project-a", [{ name: "director.guzhuang", path: "/guzhuang.md" }]);
+    const turn = calls.find((call) => call.method === "turn/start");
+    expect(turn?.params).toMatchObject({
+      input: [
+        { type: "skill", name: "h3-autodl-art-director", path: "/skill.md" },
+        { type: "skill", name: "director.guzhuang", path: "/guzhuang.md" },
+        { type: "text", text: "idea" },
+      ],
+    });
+  });
+
   it("rebuilds a host from the injected settings-root mapping and resumes A", async () => {
     const settingsRoot = tempSettingsRoot();
     const first = fakeHostRpc();

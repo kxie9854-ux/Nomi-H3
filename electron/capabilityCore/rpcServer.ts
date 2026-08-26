@@ -22,6 +22,8 @@ import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
 import { getWorkspaceRepositoryDeps } from '../runtimePaths'
 import { dispatchAndEnrich } from './mcpResultEnrichLive'
 import { makeShotVerifyDeps } from './shotVerifyDeps'
+import { importDirectorSkillMarkdown } from '../codexAppServer/directorSkills'
+import { getSettingsRoot } from '../settings/settingsRoot'
 
 export type RpcServerOptions = {
   /** 真实生成入口（runtime.runTask）。注入式：headless host 与 app 各自传同一份。 */
@@ -68,6 +70,7 @@ export type RpcServerHandle = {
 }
 
 const RENDERER_ASSEMBLE_TIMEOUT_MS = 15_000
+const RENDERER_EXPORT_TIMEOUT_MS = 30 * 60_000
 
 /** 启动 RPC server，监听 127.0.0.1 随机端口。返回端口与关闭句柄。 */
 export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHandle> {
@@ -139,6 +142,19 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
               throw new RpcError('请在 Nomi 里打开这个项目后再排成片', 409)
             }
             return requestRenderer('timeline.assemble', { projectId, ...(nodeIds?.length ? { nodeIds } : {}) }, RENDERER_ASSEMBLE_TIMEOUT_MS)
+          },
+          exportTimeline: async ({ projectId, outputName }) => {
+            if (!isRendererAvailable() || !isProjectOpen(projectId)) {
+              throw new RpcError('请在 Nomi 里打开这个项目后再导出成片', 409)
+            }
+            return requestRenderer(
+              'timeline.export',
+              { projectId, ...(outputName ? { outputName } : {}) },
+              RENDERER_EXPORT_TIMEOUT_MS,
+            )
+          },
+          saveDirectorSkill: async ({ markdown, fileName }) => {
+            return importDirectorSkillMarkdown(getSettingsRoot(), markdown, fileName)
           },
           // 画布方案已在聊天里确认（协议层 elicitation-first）→ addNodes 预批准方案门、渲染层不再弹卡（免双问）。
           //

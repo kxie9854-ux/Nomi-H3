@@ -130,10 +130,10 @@ node scripts/nomi.mjs generate workspace-xxxx modelscope "Tongyi-MAI/Z-Image-Tur
 
 **② 完成两侧权限并重启对应客户端**：
 
-- Claude Code / Codex：卡片真实握手成功后，确认 `nomi` 的 24 个工具出现。
+- Claude Code / Codex：卡片真实握手成功后，确认 `nomi` 的 27 个工具出现。
 - Cursor：先在 Nomi「设置 → 自动化与权限」允许 Cursor 发起草稿；首次在 Cursor 调用 Nomi 时，Cursor 自己仍可能要求你批准本地 MCP。Nomi 不会代替你静默批准 Cursor。
 
-24 个工具包括 `nomi_list_models`、`nomi_create_project`、`nomi_intake_brief`、`nomi_import_asset`、`nomi_group_nodes`、`nomi_generate`、`nomi_assemble_timeline`、`nomi_start_playbook`、`nomi_materialize_storyboard`、`nomi_control_run` 和 `nomi_decide_gate`。
+27 个工具包括 `nomi_list_models`、`nomi_create_project`、`nomi_intake_brief`、`nomi_import_asset`、`nomi_group_nodes`、`nomi_freeze_nodes`、`nomi_generate`、`nomi_assemble_timeline`、`nomi_export_timeline`、`nomi_save_director_skill`、`nomi_start_playbook`、`nomi_materialize_storyboard`、`nomi_control_run` 和 `nomi_decide_gate`。
 
 **③ 直接说人话**，它自己挑工具完成：
 
@@ -200,6 +200,9 @@ Claude Code 会依次调 `nomi_create_project` → `nomi_list_models` → `nomi_
 | `nomi_import_asset` | 把本机文件（手绘帧/截图/参考图）导入项目当素材，返回可直接引用的 `nomi-local://` 地址 |
 | `nomi_generate` | 真生成（含参考图 references、指定 nodeId、可选 seed 复现） |
 | `nomi_assemble_timeline` | 按给定顺序把已生成的视频节点组装到项目时间轴；不重新生成、不花额度 |
+| `nomi_freeze_nodes` | 冻结已出图的角色/场景/道具卡为定妆 |
+| `nomi_export_timeline` | 把已排好的时间轴导出为 MP4，并在画布落下成片卡；项目必须打开 |
+| `nomi_save_director_skill` | 把导演 overlay 的 SKILL.md 存进本机技能库，供侧栏点选 |
 | `nomi_start_playbook` | 创建不花钱、可恢复的制作草稿；当前完整流程为 `brand.promo` |
 | `nomi_get_run` / `nomi_subscribe_run` | 读取制作状态 / 按游标等待持久事件 |
 | `nomi_get_artifact` | 取得指定 Run 产物的安全投影、精确 Nomi 深链和限时预览 |

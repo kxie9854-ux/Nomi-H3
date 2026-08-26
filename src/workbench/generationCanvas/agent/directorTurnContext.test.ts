@@ -15,7 +15,10 @@ describe('buildDirectorCanvasContext', () => {
     const text = buildDirectorCanvasContext({ nodes: [], edges: [] }, [])
     expect(text).toContain('没有选中节点')
     expect(text).toContain('一镜还是多镜')
+    expect(text).toContain('nomi_export_timeline')
     expect(text).toContain('画布当前为空')
+    expect(buildDirectorCanvasContext({ nodes: [], edges: [] }, [], 'none')).toContain('无技能模式')
+    expect(buildDirectorCanvasContext({ nodes: [], edges: [] }, [], 'author')).toContain('创建技能模式')
   })
 
   it('lists selected node ids so iterate-this-shot can target nomi_generate', () => {

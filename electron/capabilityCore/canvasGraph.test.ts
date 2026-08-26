@@ -5,6 +5,7 @@ import {
   connectNodes,
   deleteNodes,
   emptyCanvasSnapshot,
+  freezeNodes,
   groupNodes,
   normalizeSnapshot,
   readCanvas,
@@ -144,6 +145,26 @@ describe('capabilityCore/canvasGraph', () => {
     const built = addNodes(emptyCanvasSnapshot(), [{ kind: 'image' }, { kind: 'video' }])
     const { snapshot } = connectNodes(built.snapshot, [{ source: built.ids[0], target: built.ids[1], mode: 'bogus' }])
     expect(snapshot.edges[0].mode).toBe('reference')
+  })
+
+  it('freezeNodes 只冻已出图的角色/场景卡，且幂等', () => {
+    const built = addNodes(emptyCanvasSnapshot(), [
+      { kind: 'character', title: '猫', assetUrl: 'nomi-local://asset/p/cat.png' },
+      { kind: 'character', title: '空卡' },
+      { kind: 'image', title: '静帧', assetUrl: 'nomi-local://asset/p/frame.png' },
+    ])
+    const [cat, empty, still] = built.ids
+    const first = freezeNodes(built.snapshot, [cat, empty, still, 'ghost'], 1_700_000_000_000)
+    expect(first.frozen).toEqual([cat])
+    expect(first.skipped.map((item) => item.reason)).toEqual([
+      '还没有定妆图，先生成再冻结',
+      '只有角色/场景/道具卡能冻结定妆',
+      '节点不存在',
+    ])
+    expect(first.snapshot.nodes[0].meta?.frozen).toEqual({ at: 1_700_000_000_000, by: 'user' })
+    const again = freezeNodes(first.snapshot, [cat], 1_800_000_000_000)
+    expect(again.frozen).toEqual([cat])
+    expect(again.snapshot.nodes[0].meta?.frozen).toEqual({ at: 1_700_000_000_000, by: 'user' })
   })
 
   it('setNodePrompt 改提示词与标题；未知节点 changed=false', () => {

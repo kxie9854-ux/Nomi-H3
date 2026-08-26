@@ -1,4 +1,4 @@
-import { IconCoin, IconDots, IconPlayerStopFilled, IconRobot, IconSend2, IconX } from '@tabler/icons-react'
+import { IconCoin, IconDotsVertical, IconPlayerStopFilled, IconRobot, IconSend2, IconX } from '@tabler/icons-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiAILabel, WorkbenchButton, WorkbenchIconButton } from '../../../design'
@@ -29,6 +29,16 @@ import {
 } from '../agent/directorHistoryHydration'
 import { buildDirectorRestoreSummary, type DirectorRestoreSummary } from '../agent/directorRestoreSummary'
 import { FOCUS_DIRECTOR_COMPOSER_EVENT } from '../nodes/nodeSizing'
+import { shouldShowDirectorBackendSetup, useDirectorBackendReady } from '../agent/useDirectorBackendReady'
+import { DirectorSetupBanner } from './DirectorSetupBanner'
+import { DirectorSkillPicker } from './DirectorSkillPicker'
+import {
+  readDirectorSkillIds,
+  readDirectorSkillMode,
+  writeDirectorSkillIds,
+  writeDirectorSkillMode,
+  type DirectorSkillMode,
+} from '../agent/directorSkillSelection'
 
 type CodexEvent =
   | { kind: 'status'; ready: boolean; account: { type?: string; email?: string | null; planType?: string | null } | null; error?: string }
@@ -156,6 +166,8 @@ export default function CodexDirectorPanel({
   const [elicitation, setElicitation] = React.useState<PendingElicitation | null>(null)
   const [respondingToElicitation, setRespondingToElicitation] = React.useState(false)
   const [overflowOpen, setOverflowOpen] = React.useState(false)
+  const [skillIds, setSkillIds] = React.useState<string[]>([])
+  const [skillMode, setSkillMode] = React.useState<DirectorSkillMode>('film')
   const assistantId = React.useRef<string | null>(null)
   const overflowRef = React.useRef<HTMLDivElement>(null)
   const [projectId, setProjectId] = React.useState(() => (
@@ -171,6 +183,7 @@ export default function CodexDirectorPanel({
   const timeline = useWorkbenchStore((state) => state.timeline)
   const previewAspectRatio = useWorkbenchStore((state) => state.previewAspectRatio)
   const stage = inferDirectorStage(nodes, timelineSourceNodeIds(timeline))
+  const backends = useDirectorBackendReady()
   const restoreSummary = React.useMemo(() => buildDirectorRestoreSummary({
     nodes,
     timeline,
@@ -217,6 +230,8 @@ export default function CodexDirectorPanel({
     assistantId.current = null
     setHistoryThreadId(null)
     setHistoryTruncated(false)
+    setSkillIds(readDirectorSkillIds(projectId))
+    setSkillMode(readDirectorSkillMode(projectId))
     if (!projectId || !desktop?.codex) {
       setHistoryStatus('ready')
       return
@@ -331,17 +346,19 @@ export default function CodexDirectorPanel({
       { id: replyId, role: 'assistant', text: '', origin: 'live' },
     ])
     setBusy(true)
-    const turn = readDirectorTurnContext()
+    const turn = readDirectorTurnContext(skillMode)
     void desktop.codex.send({
       text,
       projectId: sendProjectId || undefined,
       canvasContext: turn.canvasContext,
+      skillIds,
+      mode: skillMode,
     }).catch((err: unknown) => {
       if (sendProjectId && sendProjectId !== projectIdRef.current) return
       setBusy(false)
       setError(err instanceof Error ? err.message : String(err))
     })
-  }, [busy, projectId])
+  }, [busy, projectId, skillIds, skillMode])
 
   const send = React.useCallback(() => {
     sendText(draft)
@@ -401,7 +418,7 @@ export default function CodexDirectorPanel({
         <div ref={overflowRef} className="relative">
           <WorkbenchIconButton
             label={t('generationCommon.codex.moreActions')}
-            icon={<IconDots size={16} />}
+            icon={<IconDotsVertical size={16} />}
             onClick={() => setOverflowOpen((open) => !open)}
           />
           {overflowOpen ? (
@@ -431,6 +448,7 @@ export default function CodexDirectorPanel({
           </WorkbenchButton>
         </div>
       ) : null}
+      {shouldShowDirectorBackendSetup(backends) && backends ? <DirectorSetupBanner snapshot={backends} /> : null}
       {historyStatus === 'loading' ? (
         <section className="border-b border-nomi-line px-3 py-2 text-caption text-nomi-ink-3" data-testid="codex-history-loading">
           <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-nomi-accent motion-reduce:animate-none" aria-hidden="true" />
@@ -511,6 +529,13 @@ export default function CodexDirectorPanel({
         {error ? <p className="text-nomi-danger text-caption">{error}</p> : null}
       </div>
       <footer className={cn('p-3 border-t border-nomi-line flex flex-col gap-2')}>
+        <DirectorSkillPicker
+          mode={skillMode}
+          onModeChange={(next) => setSkillMode(writeDirectorSkillMode(projectId, next))}
+          selectedIds={skillIds}
+          onChange={(ids) => setSkillIds(writeDirectorSkillIds(projectId, ids))}
+          onError={setError}
+        />
         {selectedCount > 0 ? (
           <p className="text-caption text-nomi-ink-3">{t('generationCommon.codex.selectionHint', { count: selectedCount })}</p>
         ) : null}
@@ -520,7 +545,13 @@ export default function CodexDirectorPanel({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => handleAiComposerKeyDown(event, send)}
-            placeholder={selectedCount > 0 ? t('generationCommon.codex.placeholderSelected') : t('generationCommon.codex.placeholder')}
+            placeholder={selectedCount > 0
+              ? t('generationCommon.codex.placeholderSelected')
+              : t(skillMode === 'none'
+                ? 'generationCommon.codex.placeholderNone'
+                : skillMode === 'author'
+                  ? 'generationCommon.codex.placeholderAuthor'
+                  : 'generationCommon.codex.placeholder')}
             className="flex-1"
           />
           {busy ? (

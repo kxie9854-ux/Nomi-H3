@@ -9,6 +9,14 @@
 
 ## 0. 2026-08-24 最新完成
 
+### 2026-08-26 增量（四计划收尾：文本大脑 / Skill 点选 / 多镜定妆 / 首配引导）
+
+- **Codex 文本大脑**：catalog 种出 `codex-chat`（kind=text、无 mapping、authType=none），`vendorLanguageModel` 对它走 `electron/ai/codexChatLanguageModel.ts`——`codex exec --json --ephemeral` 封装成 AI SDK LanguageModelV1，tool schema 用 `<<<NOMI_TOOL` 围栏进 prompt、回包解析成 tool-call；不开 `--enable image_generation`。助手下拉出现「Codex 对话（登录额度）」，接入卡文案改「对话 + 出图」。隔离真机走查 `tests/ux/codex-chat-brain.walk.mjs` 9/9 过（含 catalog 落盘断言），截图 `tests/ux/shots/codex-chat-card.png` / `codex-chat-picker.png`。
+- **导演 Skill 点选**：侧栏 `DirectorSkillPicker` 芯片，三档「无技能 / 成片 / 创建技能」，成片脊柱 + 最多 3 个 overlay（古装/运镜/表演/声音/动作/美术/场面/一致性/转场/风格共 10 个），可导入本机 `SKILL.md`（≤256KB，落 `userData/codex-director/imported-skills/`）；`turn/start` 把脊柱+overlay 作为 skill 输入（host.test 已钉 overlay 附在脊柱后）。IPC `nomi:codex:list-skills` / `import-skill`；author 模式配套 `skills/director-skill-author/`。走查 `tests/ux/director-skill-picker.walk.mjs` 全过（三档切换/古装点选/listSkills 11 条/导入自动选中）。
+- **多镜身份锁**：MCP `nomi_freeze_nodes`（只冻已出图的角色/场景/道具卡，幂等）；skill STEP 6 lock-look 关口——定妆图出图→用户锁定→freeze→`character_ref`/`composition_ref` 连各镜首尾静帧→静帧生成自动吃到定妆图走 Codex `image_edit`，冻结前不出镜头静帧；core 对未冻结引用只提醒不拦（`advisories`）。机制链已由 `core.test.ts` 集成测试钉死（出图落卡→冻结→连边→不传 references 的静帧生成走 image_edit 且 referenceImages=定妆图）。真机多镜会话（导演真实跑 lock-look 全流程）待下个项目实测。
+- **首配引导**：`directorBackendReady` 从 catalog 派生静帧/视频后端可用性，缺任一显示 `DirectorSetupBanner`「去配置模型」（既有 `nomi-open-model-catalog` 通道，不另造登录）；不拦发送。隔离空项目走查截图里可见该条（`director-skill-picker.png`）。
+- 全门重跑通过并盖 `.claude/.gates-ok`（filesize / tokens / i18n / lint 98 / 双 TS / 全量 Vitest / production build）；两个走查脚本本日复跑 exit 0。
+
 ### 2026-08-25 增量
 
 - 导演会话已改为按 `projectId` 隔离并持久化到 `userData/codex-director/project-threads.json`；A/B 切换和完整 Electron 重启均已真机验证，同项目恢复原 Codex thread。
@@ -116,9 +124,12 @@ npx vitest run \
 | 画布上下文（钉死 projectId） | `src/workbench/generationCanvas/agent/directorTurnContext.ts`，`electron/codexAppServer/directorUserText.ts` |
 | 导演历史只读恢复 | `electron/codexAppServer/directorHistory.ts` → `host.readDirectorHistory` → IPC/preload/desktop bridge → `CodexDirectorPanel.tsx`；合并与摘要在 `agent/directorHistoryHydration.ts`、`agent/directorRestoreSummary.ts` |
 | 成片排时间轴 | MCP `nomi_assemble_timeline` → `timeline.assemble` → `arrangeStoryboardToTimeline()` |
+| 成片导出 MP4 | MCP `nomi_export_timeline` → `timeline.export` → `exportTimelineToMp4()` + 剪辑成片卡 |
 | 文本卡正文 | MCP 把 brief 写在 `prompt`；`plainTextToTiptapDoc` 灌进 `contentJson`。卡 UI：`TextDocumentNode.tsx` |
 | 官方 H3 提示词 | `skills/h3-prompt-writing/`（T2VA/FL2VA = `references/base-en.txt`，Ref2VA = `references/ref-en.txt`） |
 | 导演 skill | `skills/h3-autodl-art-director/SKILL.md` |
+| 导演模板点选 | 侧栏芯片 → `nomi:codex:list-skills` / `import-skill` → `turn/start` 附加 overlay skill |
+| Codex 文本大脑 | catalog `codex-chat` 种子（`electron/catalog/codexChat.ts`）→ `vendorLanguageModel` → `electron/ai/codexChatLanguageModel.ts`（`codex exec --json --ephemeral` → LanguageModelV1） |
 
 H3 实际有的模式：
 
@@ -143,9 +154,9 @@ H3 实际有的模式：
 - 握手：`initialize` 每进程一次；`Already initialized` 当成功。MCP 环境带上活的 `NOMI_PROJECTS_DIR` / `NOMI_SETTINGS_DIR`，否则会读错 `instance.json`。
 - 审批策略 `on-request` + 自动接受本会话 MCP 写；Nomi 花费 elicitation 必须 `content.confirm === true`。
 - 新镜头默认静帧优先：shot + 首尾图 + video，先出 Codex 静帧，用户确认后再 H3。
-- 导演 skill 是通用成片脊柱（从 MiniMax 3D 动画 skill 抽流程，**没有** 搬皮克斯造型和七列口型表）：关口 → 简报 →（多镜才大纲/角色/场景/镜头表）→ 静帧 → H3 → `nomi_assemble_timeline`。
-- 侧栏：阶段条（简报/静帧/确认/出视频/成片）；MCP 原文不当聊天刷；`:::choices` 渲染成可点按钮。
-- 成片：`nomi_assemble_timeline` 按镜序把视频追加到时间轴（项目必须在前台打开，否则 409）。没有拼接 MCP，成片就是时间轴，用户从时间轴导出。
+- 导演 skill 是通用成片脊柱（从 MiniMax 3D 动画 skill 抽流程，**没有** 搬皮克斯造型和七列口型表）：关口 → 简报 →（多镜才大纲/角色/场景/镜头表）→ 静帧 → H3 → 配乐（导入或跳过）→ `nomi_assemble_timeline` → `nomi_export_timeline`。
+- 侧栏：阶段条（简报/静帧/确认/出视频/成片）；MCP 原文不当聊天刷；`:::choices` 渲染成可点按钮；技能三档「无技能 / 成片 / 创建技能」。成片档可叠古装/运镜等（最多 3 个）或导入 `SKILL.md`。创建技能走 `nomi_save_director_skill`。
+- 成片：`nomi_assemble_timeline` 按镜序把视频追加到时间轴（项目必须在前台打开，否则 409），然后 `nomi_export_timeline` 走 ffmpeg 硬切导出 MP4 并落下剪辑成片卡。不是 AI 剪辑，没有 xfade。
 
 ---
 
@@ -188,12 +199,18 @@ P1（产品还不像 Design）：
 5. ~~**项目级导演工作台恢复阶段 2**~~：已实现真实历史 hydration、项目切换竞态/事件隔离、画布派生恢复提示和画幅项目持久化；真实《晨光逐蝶》重启恢复走查与截图通过。
 6. ~~**选项卡兜底**~~：严格的末尾编号决策现已复用现有按钮；内容清单与正式协议边界均有测试。
 
-P2（2026-08-25 执行中）：
+P2（2026-08-25 已真机走通空项目主路径）：
 
 1. ~~**空画布引导**~~：空画布主按钮是「开始导演」，空项目默认展开 Codex。
 2. ~~**弱化 Nomi 助手切换**~~：Codex 顶栏改为溢出菜单。
 3. ~~**BGM 默认路径**~~：`nomi_import_asset` 收音频；`assetUrl` 绑到 audio 节点；assemble 上音频轨。不接音乐生成模型。
 4. ~~**导出后的成片节点**~~：时间轴导出成功后画布落一张 `outputKind=timeline-export` 的 video 成片卡（复用现有 clip 导出落画布的形态，不新发明 kind）。
+
+P3：
+
+1. ~~**第一次打开就能用**~~：`DirectorSetupBanner` 从 catalog 派生静帧/视频可用性，缺后端显示「去配置模型」，走既有模型设置通道；隔离空项目走查截图验证，不拦发送。
+2. ~~**导演循环收到导出**~~：`nomi_export_timeline` 在镜头通过后走 ffmpeg 导出并落成片卡；配乐仍只本机导入或跳过。
+3. ~~**多镜定妆**~~：`nomi_freeze_nodes` 冻结已出图锚卡，skill lock-look 关口把 `character_ref` / `composition_ref` 连到各镜静帧，静帧生成自动走 Codex 改图（image_edit）带定妆图；机制链集成测试钉死（core.test.ts）。真机多镜会话留待下个项目实测。
 
 不要做：
 
@@ -230,6 +247,7 @@ P2（2026-08-25 执行中）：
 | 空白文本简报 | 只写了 `prompt` | 已灌 `contentJson`；新节点仍要把简报放进 `prompt` |
 | 「源节点不存在」但节点其实在 | 聚焦用了过期 ref | 已改读 store |
 | `请在 Nomi 里打开这个项目后再排成片` | 时间轴只活在前台 store | 排成片前确认项目在当前窗口打开 |
+| `请在 Nomi 里打开这个项目后再导出成片` | 导出读前台时间轴 | 导出前确认项目在当前窗口打开 |
 | 改了主进程代码界面没变 | 只热更新了渲染层 | 重启 `pnpm dev` |
 
 ---

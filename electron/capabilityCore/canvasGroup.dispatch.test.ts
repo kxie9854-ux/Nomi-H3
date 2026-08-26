@@ -23,6 +23,31 @@ function context(snapshot: CanvasSnapshot): { ctx: DispatchContext; read: () => 
   }
 }
 
+describe('canvas.freezeNodes dispatch', () => {
+  it('freezes a character card that already has a still', async () => {
+    const built = addNodes(emptyCanvasSnapshot(), [
+      { kind: 'character', title: '猫', assetUrl: 'nomi-local://asset/p/cat.png' },
+    ])
+    const harness = context(built.snapshot)
+    const result = await dispatch('canvas.freezeNodes', {
+      projectId: 'project-1', nodeIds: built.ids,
+    }, harness.ctx) as { frozen: string[]; skipped: unknown[] }
+    expect(result.frozen).toEqual(built.ids)
+    expect(result.skipped).toEqual([])
+    expect(harness.read().nodes[0].meta?.frozen).toMatchObject({ by: 'user' })
+  })
+
+  it('rejects an empty id list before touching the gateway', async () => {
+    const makeGateway = vi.fn()
+    const harness = context(emptyCanvasSnapshot())
+    harness.ctx.makeGateway = makeGateway
+    await expect(dispatch('canvas.freezeNodes', {
+      projectId: 'project-1', nodeIds: [],
+    }, harness.ctx)).rejects.toMatchObject<RpcError>({ httpStatus: 400 })
+    expect(makeGateway).not.toHaveBeenCalled()
+  })
+})
+
 describe('canvas.groupNodes dispatch', () => {
   it('routes a valid request through the project gateway', async () => {
     const built = addNodes(emptyCanvasSnapshot(), [{ kind: 'image' }, { kind: 'video' }])

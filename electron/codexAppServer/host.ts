@@ -17,6 +17,7 @@ import {
 import { bindDirectorThread, CODEX_THREAD_READ, CODEX_THREAD_RESUME, CODEX_THREAD_START } from "./directorThreadSession";
 import { createNdjsonParser, encodeNdjson, requestFrame, resultFrame, type JsonRpcIncoming } from "./ndjsonRpc";
 import { resolveCodexBin } from "./resolveCodexBin";
+import { DIRECTOR_SPINE_ID, importedSkillsRoot, skillInputItems, type DirectorSkillRef } from "./directorSkills";
 
 export type CodexRpc = (method: string, params?: unknown) => Promise<unknown>;
 export type CodexAppServerHostOptions = {
@@ -136,16 +137,10 @@ export function readNomiSpendApprovalPasses(params: Record<string, unknown>): nu
 const DIRECTOR_INSTRUCTIONS = [
   "You are the Nomi-H3 canvas director, not a Nomi software engineer.",
   "This session is already inside a running Nomi window. Do not open Nomi, do not wait for cold start, do not run paper radar, and ignore AGENTS.md / CLAUDE.md / docs/research.",
-  "Follow the h3-autodl-art-director production spine. A new idea is a film: confirm aspect, duration, audio, and 1-shot vs multi-shot before adding nodes. Do not lock a Pixar look unless asked.",
-  "Every approve/revise/continue gate is a :::choices fence (id | label). Stop that turn. Do not treat a chat 继续 as approval unless it maps to the recommended option.",
-  "1-shot = brief then stills-first. Multi-shot = brief, outline, character/scene cards, shot table, then stills per shot. Simple visual beats stay 1-shot.",
-  "If the user message names a project id, use ONLY that projectId for nomi_read_canvas / nomi_add_nodes / nomi_generate. Do not switch to the most recently updated project.",
-  "If selected node ids are listed, iterate those nodeIds (nomi_set_node_prompt / nomi_generate with nodeId). Do not create a parallel shot unless the user asks for a new one.",
-  "Default new shots are stills-first: one nomi_add_nodes batch (shot + first/last image + video), connect only the returned ids, generate stills, STOP. Never invent node ids. Only nomi_generate video after the user confirms or selected stills already have results.",
-  "Video generation uses only vendor autodl-art and modelKey autodl-art-h3. Prefer fl2va with first_frame+last_frame edges; one still uses ref2va. Never first-frame-only I2VA.",
-  "Cheap default: duration 5, resolution 480p竖. Stills always vendor=codex-local modelKey=codex-imagegen intent=image; put 9:16 vertical in the still prompt (no ratio param). Never dreamina for stills.",
-  "After H3 clips are approved, call nomi_assemble_timeline on the open project so shots land on the timeline in order. Do not tell the user to drag clips by hand.",
-  "Paid submits stay behind Nomi's spend gate.",
+  "Hard vendors: video only autodl-art / autodl-art-h3. Stills only codex-local / codex-imagegen. Never dreamina, never first-frame-only I2VA, never reference video, never nomi_start_playbook.",
+  "If the user message names a project id, use ONLY that projectId for nomi_read_canvas / nomi_add_nodes / nomi_generate. Paid submits stay behind Nomi's spend gate.",
+  "Every approve/revise/continue gate is a :::choices fence (id | label). Stop that turn.",
+  "If a film skill is attached, follow it: stills-first, freeze identity, then nomi_assemble_timeline and nomi_export_timeline. If a skill-author skill is attached, only write and save a director SKILL.md — do not generate stills or H3. If no skill is attached, help on the canvas without forcing the multi-step film spine, still keeping the vendor locks.",
 ].join(" ");
 
 export class CodexAppServerHost {
@@ -224,7 +219,15 @@ export class CodexAppServerHost {
     await this.initializeOnce();
     const accountRes = (await this.request("account/read", {})) as { account?: CodexAccount };
     this.account = accountRes?.account ?? null;
-    await this.request("skills/extraRoots/set", { extraRoots: [skillsRoot] });
+    const extraRoots = [skillsRoot];
+    if (this.settingsRoot) {
+      try {
+        extraRoots.push(importedSkillsRoot(this.settingsRoot));
+      } catch {
+        /* settings root missing or unsafe — bundled skills still load */
+      }
+    }
+    await this.request("skills/extraRoots/set", { extraRoots });
     this.emit({ kind: "status", ready: true, account: this.account });
     return { account: this.account };
   }
@@ -254,16 +257,29 @@ export class CodexAppServerHost {
     return { authUrl: result?.authUrl };
   }
 
-  async send(text: string, skillPath: string, projectId?: string): Promise<void> {
+  async send(
+    text: string,
+    skillPathOrSkills: string | null | readonly DirectorSkillRef[],
+    projectId?: string,
+    extraSkills: readonly DirectorSkillRef[] = [],
+  ): Promise<void> {
     const threadId = await this.ensureProjectThread(projectId);
     const safeProjectId = normalizeDirectorProjectId(projectId) || undefined;
     // Establish routing before turn/start resolves: app-server notifications may
     // arrive before the request result under a fast local tool call.
     this.activeTurn = { threadId, turnId: "", ...(safeProjectId ? { projectId: safeProjectId } : {}) };
+    const skills = Array.isArray(skillPathOrSkills)
+      ? skillPathOrSkills
+      : [
+          ...(typeof skillPathOrSkills === "string" && skillPathOrSkills
+            ? [{ name: DIRECTOR_SPINE_ID, path: skillPathOrSkills }]
+            : []),
+          ...extraSkills,
+        ];
     const started = (await this.request("turn/start", {
       threadId,
       input: [
-        { type: "skill", name: "h3-autodl-art-director", path: skillPath },
+        ...skillInputItems(skills),
         { type: "text", text },
       ],
     })) as { turn?: { id?: string } };

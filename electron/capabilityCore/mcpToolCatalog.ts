@@ -86,7 +86,10 @@ export const MCP_TOOL_CATALOG = [
   },
   {
     name: 'nomi_connect_nodes',
-    description: '连线（参考关系）。connections=[{source,target,mode?}]，mode 缺省 reference。',
+    description:
+      '连线（参考关系）。connections=[{source,target,mode?}]。'
+      + 'mode 缺省 reference。多镜定妆：角色定妆图 → 各镜首/尾静帧用 character_ref；场景定妆图 → 静帧用 composition_ref；'
+      + '首尾帧到视频用 first_frame / last_frame。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -118,6 +121,23 @@ export const MCP_TOOL_CATALOG = [
     },
     method: 'canvas.groupNodes',
     build: (a: Record<string, unknown>) => ({ projectId: a.projectId, nodeIds: a.nodeIds || [], name: a.name }),
+  },
+  {
+    name: 'nomi_freeze_nodes',
+    description:
+      '把已出图的角色/场景/道具卡冻结为定妆。未出图或非这类卡会跳过并回报。'
+      + '多镜在铺各镜静帧前先冻结；重复调用已冻结的卡是安全的。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        nodeIds: { type: 'array', items: { type: 'string' }, minItems: 1, description: '要冻结的角色/场景/道具节点 id。' },
+      },
+      required: ['projectId', 'nodeIds'],
+      additionalProperties: false,
+    },
+    method: 'canvas.freezeNodes',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, nodeIds: a.nodeIds || [] }),
   },
   {
     name: 'nomi_set_node_prompt',
@@ -393,7 +413,7 @@ export const MCP_TOOL_CATALOG = [
       + '用它把手绘帧 / 截图 / 用户给的参考图 / BGM 音频弄进来——导入后把返回的 url 放进 nomi_generate 的 references，'
       + '或当画布节点的参考源。只收图片、视频与音频（png/jpg/webp/gif/bmp/tiff/heic/mp4/mov/webm/m4v/mp3/wav/m4a/aac/flac），'
       + '单个 ≤64MB，须传**绝对路径**；系统/凭据目录（如 ~/.ssh、~/.nomi）的文件会被拒绝。'
-      + '导入 BGM 后用 nomi_add_nodes 建 kind=audio 节点，并把返回的 url 填进 assetUrl，再 nomi_assemble_timeline。',
+      + '导入 BGM 后用 nomi_add_nodes 建 kind=audio 节点，并把返回的 url 填进 assetUrl，再 nomi_assemble_timeline，然后 nomi_export_timeline。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -495,7 +515,7 @@ export const MCP_TOOL_CATALOG = [
     description:
       '把画布上已生成的镜头按镜序追加到时间轴成片。省略 nodeIds 则排所有有结果的视频（缺视频用首帧占位），'
       + '并把已导入/已生成的 audio 节点排到音频轨（BGM）。已在时间轴上的镜头会跳过。项目必须在 Nomi 里打开。'
-      + '排完后可从时间轴导出，不要再让用户手拖。',
+      + '排完后立刻 nomi_export_timeline 导出 MP4，不要让用户手拖或去预览区点导出。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -513,6 +533,47 @@ export const MCP_TOOL_CATALOG = [
     build: (a: Record<string, unknown>) => ({
       projectId: a.projectId,
       ...(Array.isArray(a.nodeIds) ? { nodeIds: a.nodeIds } : {}),
+    }),
+  },
+  {
+    name: 'nomi_export_timeline',
+    description:
+      '把当前时间轴硬切导出为 MP4（ffmpeg），并在画布落下「剪辑成片」视频卡。'
+      + '时间轴必须已有画面（先 nomi_assemble_timeline）。项目必须在 Nomi 里打开。'
+      + '不重新生成、不花额度。不要让用户去预览区手点导出。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        outputName: { type: 'string', description: '可选：导出文件名（如 film.mp4）。省略则自动命名。' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    method: 'timeline.export',
+    build: (a: Record<string, unknown>) => ({
+      projectId: a.projectId,
+      ...(typeof a.outputName === 'string' && a.outputName.trim() ? { outputName: a.outputName.trim() } : {}),
+    }),
+  },
+  {
+    name: 'nomi_save_director_skill',
+    description:
+      '把一份导演 overlay 的 SKILL.md 存进本机技能库，之后可在 Codex 侧栏点选。'
+      + '只用于创建技能模式。不要用来出图或出视频。markdown 必须含 YAML frontmatter 的 name 与 description。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        markdown: { type: 'string', description: '完整 SKILL.md 正文（含 frontmatter）。' },
+        fileName: { type: 'string', description: '可选：原文件名，frontmatter 无名时用来起 id。' },
+      },
+      required: ['markdown'],
+      additionalProperties: false,
+    },
+    method: 'director.saveSkill',
+    build: (a: Record<string, unknown>) => ({
+      markdown: a.markdown,
+      ...(typeof a.fileName === 'string' && a.fileName.trim() ? { fileName: a.fileName.trim() } : {}),
     }),
   },
 ] as const

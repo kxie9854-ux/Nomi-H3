@@ -20,9 +20,10 @@ Personal AGPL fork of [Nomi](https://github.com/aqm857886159/Nomi) `v0.20.1`. Up
 ## Codex
 
 - 内嵌：生成区右侧栏默认 Codex。ChatGPT.app 自带二进制，app-server 走 **`stdio://` NDJSON**（不是 `unix://`）。登录用 ChatGPT 套餐，不是 Platform API。
-- 导演 skill：`skills/h3-autodl-art-director/`（改完同步 `~/.codex/skills` 和 `~/.agents/skills`）。
+- 原生助手 / 规划器 / 提示词优化可选 catalog 文本模型 `codex-chat`（本机 `codex exec`，同一套登录额度）。视频仍只许 autodl-art-h3。
+- 导演 skill：`skills/h3-autodl-art-director/`（改完同步 `~/.codex/skills` 和 `~/.agents/skills`）。侧栏三档：无技能 / 成片 / 创建技能。成片可叠 overlay 或导入 `SKILL.md`。
 - 官方提示词 skill：`skills/h3-prompt-writing/`。
 - 导演 cwd：userData `codex-director/`，避免吃到仓库 `AGENTS.md` 去跑论文雷达。
-- 成片：MCP `nomi_assemble_timeline`（项目必须在前台打开）。
+- 成片：MCP `nomi_assemble_timeline` 再 `nomi_export_timeline`（项目必须在前台打开）。
 
 付费提交仍走 Nomi 花费门。当前内嵌路径会自动带 `confirm: true`（见 `HANDOFF.md` P1）。

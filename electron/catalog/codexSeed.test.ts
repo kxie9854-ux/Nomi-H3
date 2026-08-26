@@ -17,12 +17,13 @@ describe("Codex 本地生图 seed", () => {
     expect(vendor).toMatchObject({
       key: "codex-local",
       enabled: false,
+      name: "Codex 本地（登录额度）",
       baseUrlHint: "local://codex",
       authType: "none",
     });
   });
 
-  it("只播一个图片模型，并接 text_to_image/image_edit 的 process transport", () => {
+  it("播图片模型和文本大脑，图片接 process transport，文本无 mapping", () => {
     const model = state.models.find((m) => m.vendorKey === "codex-local" && m.modelKey === "codex-imagegen");
     expect(model).toMatchObject({ kind: "image", enabled: true, labelZh: "Codex 生图（登录额度）" });
     expect(model?.meta).toMatchObject({ archetypeId: "codex-imagegen" });
@@ -38,5 +39,10 @@ describe("Codex 本地生图 seed", () => {
     expect(edit).toBeTruthy();
     expect(edit?.create.process).toMatchObject({ bin: "codex", parser: "codex-cli-image", args: [] });
     expect(edit?.query?.process).toMatchObject({ bin: "codex", parser: "codex-cli-image", args: ["query_result", "--submit_id={{providerMeta.task_id}}"] });
+
+    const chat = state.models.find((m) => m.vendorKey === "codex-local" && m.modelKey === "codex-chat");
+    expect(chat).toMatchObject({ kind: "text", enabled: true, labelZh: "Codex 对话（登录额度）" });
+    expect(chat?.meta).toMatchObject({ supportsImageInput: true });
+    expect(state.mappings.some((mapping) => mapping.vendorKey === "codex-local" && mapping.modelKey === "codex-chat")).toBe(false);
   });
 });

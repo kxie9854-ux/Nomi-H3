@@ -9,6 +9,7 @@
 import { ACTIVE_JOB_STATUSES } from '../productionRun/productionRunControl'
 import { stripInternalEnrichFields } from './mcpResultEnrich'
 import { safeArtifactValue } from './mcpArtifactSanitize'
+import { buildDirectorSaveSkillOutcome, buildTimelineAssembleOutcome, buildTimelineExportOutcome } from './mcpTimelineToolResults'
 export { sanitizeArtifactResource } from './mcpArtifactSanitize'
 
 export type ResultLocale = 'zh-CN' | 'en'
@@ -682,22 +683,15 @@ export function buildToolOutcome(
   }
 
   if (toolName === 'nomi_assemble_timeline') {
-    const arranged = typeof value.arranged === 'number' ? value.arranged : 0
-    const total = typeof value.total === 'number' ? value.total : arranged
-    const skipped = Array.isArray(value.skipped) ? value.skipped.length : 0
-    const text = [
-      `✓ ${L(ctx, '成片已排上时间轴', 'Film laid onto the timeline')} · ${arranged}/${total}`,
-      skipped ? L(ctx, `跳过 ${skipped} 段（已在时间轴上或还不能排）`, `Skipped ${skipped} (already on the timeline or not ready)`) : null,
-      L(ctx, '下一步：在 Nomi 时间轴里预览或导出。', 'Next: preview or export from the Nomi timeline.'),
-    ].filter(Boolean).join('\n') + openLine
-    return {
-      text,
-      outcome: {
-        kind: 'timeline_assemble', projectId, arranged, total, skipped,
-        nextActions: ['open_in_nomi'],
-        openInNomi: openInNomi || (projectId ? `nomi://project/${projectId}` : null),
-      },
-    }
+    return buildTimelineAssembleOutcome(value, ctx.locale, projectId, openLine, openInNomi || null)
+  }
+
+  if (toolName === 'nomi_export_timeline') {
+    return buildTimelineExportOutcome(value, ctx.locale, projectId, openLine, openInNomi || null)
+  }
+
+  if (toolName === 'nomi_save_director_skill') {
+    return buildDirectorSaveSkillOutcome(value, ctx.locale, openLine)
   }
 
   if (toolName === 'nomi_generate') {

@@ -34,6 +34,8 @@ export type StreamTextTaskOptions = {
 // 超时即 abort（真掐断 HTTP 连接，见 buildAiSdkModel 透传 init.signal），并抛错让节点落 error 可重试。
 const FIRST_TOKEN_TIMEOUT_MS = 30_000;
 const OVERALL_TIMEOUT_MS = 120_000;
+const CODEX_FIRST_TOKEN_TIMEOUT_MS = 90_000;
+const CODEX_OVERALL_TIMEOUT_MS = 300_000;
 
 /** http(s) URL 走 URL 引用（不内联）；data:/base64 等原样作字符串传给 SDK。 */
 function toImagePart(imageUrl: string): { type: "image"; image: URL | string } {
@@ -61,6 +63,8 @@ export async function streamTextTask(
   opts: StreamTextTaskOptions = {},
 ): Promise<{ text: string; raw: unknown; finishReason?: string; reasoning?: string }> {
   const model = buildLanguageModelForVendor(input.vendor, input.model, input.apiKey);
+  const firstTokenTimeoutMs = input.vendor.key === "codex-local" ? CODEX_FIRST_TOKEN_TIMEOUT_MS : FIRST_TOKEN_TIMEOUT_MS;
+  const overallTimeoutMs = input.vendor.key === "codex-local" ? CODEX_OVERALL_TIMEOUT_MS : OVERALL_TIMEOUT_MS;
   // 收口 sanitize（P0-6）：与原文本分支同语义，prompt 统一 ASCII 可移植化。
   const promptText = sanitizeForBroadCompat(input.prompt);
   const content = input.imageUrl
@@ -76,13 +80,13 @@ export async function streamTextTask(
     else external.addEventListener("abort", () => controller.abort(), { once: true });
   }
   let firstTokenTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
-    timeoutReason = `首字 ${FIRST_TOKEN_TIMEOUT_MS / 1000}s 未响应`;
+    timeoutReason = `首字 ${firstTokenTimeoutMs / 1000}s 未响应`;
     controller.abort();
-  }, FIRST_TOKEN_TIMEOUT_MS);
+  }, firstTokenTimeoutMs);
   const overallTimer = setTimeout(() => {
-    timeoutReason = `整体超过 ${OVERALL_TIMEOUT_MS / 1000}s`;
+    timeoutReason = `整体超过 ${overallTimeoutMs / 1000}s`;
     controller.abort();
-  }, OVERALL_TIMEOUT_MS);
+  }, overallTimeoutMs);
   const timeoutError = () =>
     new Error(`文本生成超时（${timeoutReason}），已中断。请重试或更换模型。`);
 

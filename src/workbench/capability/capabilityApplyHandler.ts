@@ -16,7 +16,7 @@ import { arrangeStoryboardToTimeline } from '../generationCanvas/agent/sendStory
 import { exportTimelineToMp4 } from '../export/exportApi'
 import { ensureTimelineExportFilmNode } from '../generationCanvas/agent/timelineExportFilmNode'
 import { buildWorkspaceFileUrl } from '../explorer/workspaceFileDrag'
-import { computeTimelineDuration } from '../timeline/timelineMath'
+import { computeTimelineDuration, timelineHasVisualClips } from '../timeline/timelineMath'
 import { verifyShotsAndReport, useShotVerifyStore, isShotVerifyEnabled } from '../generationCanvas/agent/shotVerifyStore'
 import { isAnchorFrozen, isVisualAnchorNode } from '../generationCanvas/model/anchorBibleKeys'
 import { assertDraftFilmReady, draftFilmTimelineFromState } from '../preview/timelineSubtitleTransitionContract'
@@ -481,6 +481,17 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
         .map((node) => ({ nodeId: node.id, ...(node.title && node.title.trim() ? { title: node.title.trim() } : {}) }))
       return { unfrozenAnchors }
     }
+    case 'timeline.export': {
+      const project = typeof data.projectId === 'string' ? data.projectId : ''
+      if (!timelineHasVisualClips(useWorkbenchStore.getState().timeline)) {
+        throw new Error('时间轴没有画面，先 nomi_assemble_timeline')
+      }
+      useWorkbenchStore.getState().setTimelinePanelCollapsed(false)
+      return exportCurrentTimelineFilm(
+        project,
+        typeof data.outputName === 'string' ? data.outputName : undefined,
+      )
+    }
     case 'production.export': {
       const project = typeof data.projectId === 'string' ? data.projectId : ''
       const state = useWorkbenchStore.getState()
@@ -491,24 +502,34 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
       if (typeof data.runId === 'string' && data.runId.trim()) {
         assertDraftFilmReady(draftFilmTimelineFromState(state.timeline))
       }
-      const result = await exportTimelineToMp4({
-        projectId: project,
-        timeline: state.timeline,
-        aspectRatio: state.previewAspectRatio,
-        generationNodes: useGenerationCanvasStore.getState().nodes,
-        outputName: typeof data.outputName === 'string' ? data.outputName : undefined,
-      })
-      ensureTimelineExportFilmNode(useGenerationCanvasStore, {
-        relativePath: result.relativePath,
-        outputUrl: buildWorkspaceFileUrl(project, result.relativePath),
-        durationSeconds: computeTimelineDuration(state.timeline) / Math.max(1, state.timeline.fps),
-        title: i18n.t('generationCommon.clipNode.outputNodeTitle'),
-      })
-      return { relativePath: result.relativePath, size: result.size }
+      const exported = await exportCurrentTimelineFilm(
+        project,
+        typeof data.outputName === 'string' ? data.outputName : undefined,
+      )
+      return { relativePath: exported.relativePath, size: exported.size }
     }
     default:
       throw new Error(i18n.t('runtime.capability.unknownOperation', { operation: op }))
   }
+}
+
+async function exportCurrentTimelineFilm(projectId: string, outputName?: string) {
+  const state = useWorkbenchStore.getState()
+  const result = await exportTimelineToMp4({
+    projectId,
+    timeline: state.timeline,
+    aspectRatio: state.previewAspectRatio,
+    generationNodes: useGenerationCanvasStore.getState().nodes,
+    outputName,
+  })
+  const durationSeconds = computeTimelineDuration(state.timeline) / Math.max(1, state.timeline.fps)
+  const filmNodeId = ensureTimelineExportFilmNode(useGenerationCanvasStore, {
+    relativePath: result.relativePath,
+    outputUrl: buildWorkspaceFileUrl(projectId, result.relativePath),
+    durationSeconds,
+    title: i18n.t('generationCommon.clipNode.outputNodeTitle'),
+  })
+  return { relativePath: result.relativePath, size: result.size, filmNodeId, durationSeconds }
 }
 
 let unregister: (() => void) | null = null
