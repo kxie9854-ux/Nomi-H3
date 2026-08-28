@@ -1,5 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } from "electron";
-import type { Rectangle, WebContents } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell, type Rectangle, type WebContents } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createProject, deleteProject, diagnoseProject, listProjects, readProject, recoverProject, saveProject } from "./projects/repository";
@@ -48,6 +47,7 @@ import { registerOnboardingIpc } from "./ai/onboarding/onboardingIpc";
 import { registerProviderAdapterIpc } from "./providerAdapter/ipc";
 import { registerExistingConnectionIpc } from "./providerAdapter/existingConnectionIpc";
 import { registerUpdaterIpc } from "./update/autoUpdater";
+import { registerCodexAppServerIpc } from "./codexAppServer/ipc";
 import { setRendererTarget } from "./capabilityCore/rendererBridge";
 import { readMcpInfo, installMcp, uninstallMcp } from "./capabilityCore/mcpConfig";
 import { verifyMcp } from "./capabilityCore/mcpVerify";
@@ -649,6 +649,7 @@ function registerIpc(): void {
   registerProductionRunIpc();
   registerProductionActionIpc({ getActiveProjectId: () => activeCapabilityProjectId, loadCore: loadCapabilityCoreModule }); // P4 S6 返工/续拍
   registerUpdaterIpc();
+  registerCodexAppServerIpc();
   // M0 独立捕捞窗已退役（方案A 2026-07-12）：捕捞面收敛到应用内浏览器（registerBrowserViewIpc）。
   // S4-1 评测安全铁律:事件落盘前,已配置的 vendor key 精确匹配脱敏(形态兜底之外的地基)。
   setEventLogSecretsProvider(catalogSecretsProvider);

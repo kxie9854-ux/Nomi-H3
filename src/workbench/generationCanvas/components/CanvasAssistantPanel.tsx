@@ -173,6 +173,7 @@ export default function CanvasAssistantPanel({
     setDeviationAnchorId(null)
     resetTimelineUi()
   }, [history.binding.sessionKey, history.binding.threadId, resetTimelineUi])
+  const setDirector = useGenerationCanvasStore((state) => state.setGenerationDirector)
 
   const {
     isDragging,
@@ -626,6 +627,9 @@ export default function CanvasAssistantPanel({
             )}
             onNewConversation={handleNewConversation}
           />
+          <WorkbenchButton className="text-caption" onClick={() => setDirector('codex')}>
+            {t('generationCommon.assistant.switchCodex')}
+          </WorkbenchButton>
           <WorkbenchIconButton
             className={cn(
               'size-6 inline-grid place-items-center',

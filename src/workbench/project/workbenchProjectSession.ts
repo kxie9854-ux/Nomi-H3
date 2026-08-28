@@ -13,6 +13,7 @@ export function readCurrentWorkbenchProjectPayload(): WorkbenchProjectPayload {
   return {
     workbenchDocument: workbench.workbenchDocument,
     timeline: workbench.timeline,
+    previewAspectRatio: workbench.previewAspectRatio,
     // S5-b-0:持久化走 document 视图(选区是会话态不进项目文件)
     generationCanvas: generation.readDocumentSnapshot(),
     categories: workbench.categories,
@@ -28,6 +29,7 @@ export function readCurrentWorkbenchProjectPayload(): WorkbenchProjectPayload {
 export function restoreWorkbenchProjectPayload(payload: WorkbenchProjectPayload): void {
   useWorkbenchStore.getState().setWorkbenchDocument(payload.workbenchDocument)
   useWorkbenchStore.getState().setTimeline(payload.timeline)
+  useWorkbenchStore.setState({ previewAspectRatio: payload.previewAspectRatio ?? '16:9' })
   useWorkbenchStore.getState().setCategories(payload.categories)
   // P0-6:分镜方案随项目恢复。restore 在 hydrate 里先于 swapCreationAiProject 跑,故由它负责
   // 载入本项目方案(swap 不再清,见 workbenchStore),老项目无字段则置 null。

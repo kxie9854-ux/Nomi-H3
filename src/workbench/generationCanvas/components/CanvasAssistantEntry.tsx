@@ -6,13 +6,20 @@ import { cn } from '../../../utils/cn'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 
 const CanvasAssistantPanel = React.lazy(() => import('./CanvasAssistantPanel'))
+const CodexDirectorPanel = React.lazy(() => import('./CodexDirectorPanel'))
 
 type CanvasAssistantEntryProps = {
   defaultCollapsed?: boolean
   onCollapsedChange?: (collapsed: boolean) => void
 }
 
-function CanvasAssistantLauncher({ onOpen }: { onOpen: () => void }): JSX.Element {
+function CanvasAssistantLauncher({
+  director,
+  onOpen,
+}: {
+  director: 'codex' | 'nomi'
+  onOpen: () => void
+}): JSX.Element {
   const { t } = useTranslation()
   return (
     <aside
@@ -31,7 +38,13 @@ function CanvasAssistantLauncher({ onOpen }: { onOpen: () => void }): JSX.Elemen
         )}
         onClick={onOpen}
       >
-        <NomiAILabel markSize={18} wordSize={13} suffix={t('generationCommon.canvas.assistantSuffix')} />
+        <NomiAILabel
+          markSize={18}
+          wordSize={13}
+          suffix={t(director === 'codex'
+            ? 'generationCommon.canvas.codexAssistantSuffix'
+            : 'generationCommon.canvas.assistantSuffix')}
+        />
       </WorkbenchButton>
     </aside>
   )
@@ -44,6 +57,7 @@ export default function CanvasAssistantEntry({
   const collapsed = useGenerationCanvasStore((state) => state.generationAiCollapsed)
   const messagesLength = useGenerationCanvasStore((state) => state.generationAiMessages.length)
   const draft = useGenerationCanvasStore((state) => state.generationAiDraft)
+  const director = useGenerationCanvasStore((state) => state.generationDirector)
   const setCollapsed = useGenerationCanvasStore((state) => state.setGenerationAiCollapsed)
   const [shouldLoadPanel, setShouldLoadPanel] = React.useState(
     () => !defaultCollapsed || !collapsed || messagesLength > 0 || draft.trim().length > 0,
@@ -66,12 +80,14 @@ export default function CanvasAssistantEntry({
   }, [setCollapsed])
 
   if (!shouldLoadPanel) {
-    return <CanvasAssistantLauncher onOpen={openPanel} />
+    return <CanvasAssistantLauncher director={director} onOpen={openPanel} />
   }
 
   return (
-    <React.Suspense fallback={<CanvasAssistantLauncher onOpen={openPanel} />}>
-      <CanvasAssistantPanel onCollapsedChange={onCollapsedChange} />
+    <React.Suspense fallback={<CanvasAssistantLauncher director={director} onOpen={openPanel} />}>
+      {director === 'codex'
+        ? <CodexDirectorPanel onCollapsedChange={onCollapsedChange} />
+        : <CanvasAssistantPanel onCollapsedChange={onCollapsedChange} />}
     </React.Suspense>
   )
 }

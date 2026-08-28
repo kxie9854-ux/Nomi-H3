@@ -24,6 +24,12 @@ describe('MCP tools/call schema boundary', () => {
     expect(payload).toEqual({ projectId: 'p', nodes: [{ type: 'text', text: 'hello' }] })
   })
 
+  it('enforces array cardinality advertised by the tool schema', () => {
+    const schema = { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 3 }
+    expect(validateToolArguments('demo', schema, ['one'])?.message).toContain('至少 2 项')
+    expect(validateToolArguments('demo', schema, ['one', 'two'])).toBeNull()
+  })
+
   it('keeps the entire catalog inside the validator-supported schema subset', () => {
     const unsupported = MCP_TOOL_CATALOG.flatMap((tool) => findUnsupportedSchemaFeatures(tool.inputSchema).map((issue) => `${tool.name}: ${issue}`))
     expect(unsupported).toEqual([])

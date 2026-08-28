@@ -215,4 +215,42 @@ describe('P5 E1 adoption bridge', () => {
     const replay = await adoptStoryboardBatch({ units, startFrame: 0, readNodes: () => nodes, ports })
     expect(replay).toMatchObject({ status: 'applied', replayed: true })
   })
+
+  it('lays BGM from frame zero without advancing the visual shot cursor', async () => {
+    let live = createDefaultTimeline()
+    const nodes = [
+      {
+        id: 'shot-a', kind: 'image', title: '镜头 1', status: 'success', shotIndex: 1,
+        position: { x: 0, y: 0 }, result: { id: 'artifact-a', type: 'image', url: 'data:image/svg+xml,a', createdAt: 1 },
+      },
+      {
+        id: 'bgm', kind: 'audio', title: 'BGM', status: 'success',
+        position: { x: 0, y: 100 }, result: { id: 'artifact-bgm', type: 'audio', url: 'https://example.test/bgm.mp3', createdAt: 2 },
+      },
+      {
+        id: 'shot-b', kind: 'image', title: '镜头 2', status: 'success', shotIndex: 2,
+        position: { x: 0, y: 200 }, result: { id: 'artifact-b', type: 'image', url: 'data:image/svg+xml,b', createdAt: 3 },
+      },
+    ] as never
+    const ports = {
+      readTimeline: () => live,
+      commitTimeline: (next: TimelineState) => { live = next },
+      restoreTimeline: (old: TimelineState) => { live = old; return true },
+    }
+    const units = [
+      { nodeId: 'shot-a', shotIndex: 1, role: 'still' as const },
+      { nodeId: 'bgm', shotIndex: 1, role: 'audio' as const },
+      { nodeId: 'shot-b', shotIndex: 2, role: 'still' as const },
+    ]
+
+    const result = await adoptStoryboardBatch({ units, startFrame: 120, readNodes: () => nodes, ports })
+
+    expect(result).toMatchObject({ status: 'applied', replayed: false })
+    expect(result.placedItems?.map(({ nodeId, startFrame }) => ({ nodeId, startFrame }))).toEqual([
+      { nodeId: 'shot-a', startFrame: 120 },
+      { nodeId: 'bgm', startFrame: 0 },
+      { nodeId: 'shot-b', startFrame: 210 },
+    ])
+    expect(live.tracks.find((track) => track.type === 'audio')?.clips[0]?.startFrame).toBe(0)
+  })
 })

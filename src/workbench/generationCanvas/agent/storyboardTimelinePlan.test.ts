@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { planStoryboardTimeline } from './storyboardTimelinePlan'
+import { planImportedAudio, planStoryboardTimeline } from './storyboardTimelinePlan'
 import type {
   GenerationCanvasEdge,
   GenerationCanvasNode,
@@ -110,5 +110,25 @@ describe('planStoryboardTimeline', () => {
       { nodeId: 'v1', shotIndex: 2, role: 'video' },
       { nodeId: 'kf2', shotIndex: 4, role: 'placeholder' },
     ])
+  })
+})
+
+describe('planImportedAudio', () => {
+  it('places audio nodes with results onto their own track plan', () => {
+    const nodes = [
+      node('v1', 'video', 1, { type: 'video' }),
+      { ...node('bgm', 'audio', undefined, { type: 'audio', url: 'nomi-local://bgm.mp3' }), categoryId: 'audio' },
+      { ...node('empty', 'audio', undefined), categoryId: 'audio' },
+    ]
+    expect(planImportedAudio(nodes)).toEqual([{ nodeId: 'bgm', shotIndex: 0, role: 'audio' }])
+    expect(planStoryboardTimeline(nodes, []).units.map((unit) => unit.nodeId)).toEqual(['v1'])
+  })
+
+  it('honors assemble scope for audio', () => {
+    const nodes = [
+      { ...node('a', 'audio', undefined, { type: 'audio', url: 'nomi-local://a.mp3' }), categoryId: 'audio' },
+      { ...node('b', 'audio', undefined, { type: 'audio', url: 'nomi-local://b.mp3' }), categoryId: 'audio' },
+    ]
+    expect(planImportedAudio(nodes, ['b']).map((unit) => unit.nodeId)).toEqual(['b'])
   })
 })

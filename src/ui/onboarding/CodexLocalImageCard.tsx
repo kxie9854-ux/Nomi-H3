@@ -1,9 +1,9 @@
 /**
- * 「Codex 本地生图」接入卡（无 key 的本机 provider，与 ComfyuiLocalCard / DreaminaMemberCard 同一模式）。
+ * 「Codex 本地」接入卡（无 key 的本机 provider，与 ComfyuiLocalCard / DreaminaMemberCard 同一模式）。
  *
  * **为什么要单独一张卡**：Codex 在 Nomi 里是两个方向相反的东西，此前被一个按钮绑在一起：
  *   - Codex **→** Nomi：Codex 当司机，经 MCP 驱动 Nomi 建项目/出图（「接入 AI 编程助手」卡）。
- *   - Nomi **→** Codex：Nomi spawn `codex exec` 帮用户出图，烧用户自己的 ChatGPT 额度（**本卡**）。
+ *   - Nomi **→** Codex：Nomi spawn `codex exec` 帮用户对话/出图，烧用户自己的 ChatGPT 额度（**本卡**）。
  * 旧实现里本卡不存在：codex-local 被排除在模型列表外，它唯一的开关是「接入 AI 编程助手」的**副作用**
  * （接入 MCP 顺带开生图、撤销顺带关），而且抽屉每次刷新都会把它掰回 MCP 接入状态——用户自己关掉
  * 也会被冲回去。拆成本卡后：两个方向各开各的，用户的开关是用户的。
@@ -72,7 +72,7 @@ export function CodexLocalImageCard({ enabled, onChanged, onOpenDetails, detailM
       ) : null}
 
       <div className="text-caption text-nomi-ink-60 leading-relaxed">{t('onboardingProviders.codexImage.requirement')}</div>
-      {/* 明说和「接入 AI 编程助手」是两回事——那张卡是「助手来用 Nomi」，这张是「Nomi 用 Codex 出图」。 */}
+      {/* 明说和「接入 AI 编程助手」是两回事——那张卡是「助手来用 Nomi」，这张是「Nomi 用 Codex 对话和出图」。 */}
       <div className="text-caption text-nomi-ink-40 leading-relaxed">{t('onboardingProviders.codexImage.notTheSame')}</div>
 
       {enabled ? (

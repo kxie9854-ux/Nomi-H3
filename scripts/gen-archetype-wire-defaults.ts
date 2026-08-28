@@ -182,7 +182,9 @@ export function renderGeneratedFile(defaults: WireDefaults, sizeRatioSemantic: S
     `};\n` +
     `\n// size 键比例语义桥接（从档案 size 控件选项集 derive）：headless size 别名闸据此判「调用方比例能否落到 size」，\n` +
     `// 不再只按默认值字面形状猜（修 seedance-2.5-apimart t2v 的 size 默认 "adaptive" 被误判像素语义、吞掉调用方比例）。\n` +
-    `export const ARCHETYPE_SIZE_RATIO_SEMANTIC: Record<string, Record<string, boolean>> = ${JSON.stringify(sizeRatioSemantic, null, 2)};\n`
+    // This derived boolean index is compact on purpose: the defaults table carries the readable payload, while
+    // pretty-printing this second lookup can push the generated module over the 800-line shell guard.
+    `export const ARCHETYPE_SIZE_RATIO_SEMANTIC: Record<string, Record<string, boolean>> = ${JSON.stringify(sizeRatioSemantic)};\n`
   );
 }
 

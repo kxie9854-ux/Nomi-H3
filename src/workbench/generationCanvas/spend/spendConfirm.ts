@@ -75,6 +75,11 @@ export type SpendConfirmRequest = {
   countdownMs?: number
   /** When anonymous hosting is required, this disclosure is rendered in the same spend card. */
   hostingDisclosure?: HostingDisclosure
+  /**
+   * 外部 agent 付费的项目 + 模型服务作用域（主进程生成的不透明键）。仅用于消费 Codex 面板
+   * 刚刚取得的一次性兼容桥授权；普通用户生成与其它 agent 确认不带它。
+   */
+  agentApprovalScope?: string
 }
 
 type Pending = SpendConfirmRequest & { resolve: (ok: boolean) => void }
@@ -89,6 +94,9 @@ type SpendConfirmState = {
    */
   queue: Pending[]
   lightSuppressed: boolean
+  /** Codex 表单已获真人确认、但 app-server 未继续过线时，给同作用域 renderer 门一段有上限的票。 */
+  preApprovedAgentSpend: Record<string, number>
+  preApproveNextAgentSpend: (scope: string, passes?: number) => void
   /** 弹确认；resolve true/false。light 且本会话已抑制 → 直接 true 不弹。已有在显 → 入队等候（不覆盖）。 */
   requestConfirm: (req: SpendConfirmRequest) => Promise<boolean>
   /** 对话框按钮回调：ok=确认；suppressLight=勾了「本会话不再提示」。决议队首后自动晋升下一个。 */
@@ -99,9 +107,32 @@ export const useSpendConfirmStore = create<SpendConfirmState>()((set, get) => ({
   pending: null,
   queue: [],
   lightSuppressed: false,
+  preApprovedAgentSpend: {},
+  preApproveNextAgentSpend: (scope, passes = 1) => {
+    if (!scope) return
+    const safePasses = Number.isInteger(passes) && passes > 0 ? passes : 1
+    set((state) => ({
+      preApprovedAgentSpend: {
+        ...state.preApprovedAgentSpend,
+        // 同一张侧栏卡重发事件时不叠加到无限；只保留它明示的那段授权上限。
+        [scope]: Math.max(state.preApprovedAgentSpend[scope] || 0, safePasses),
+      },
+    }))
+  },
   requestConfirm: (req) => {
     // A remembered spend prompt must not suppress a still-unanswered hosting disclosure.
     if (req.light && get().lightSuppressed && !req.hostingDisclosure) return Promise.resolve(true)
+    const scope = req.source === 'agent' ? req.agentApprovalScope : undefined
+    const tickets = scope ? (get().preApprovedAgentSpend[scope] || 0) : 0
+    if (scope && tickets > 0) {
+      set((state) => {
+        const next = { ...state.preApprovedAgentSpend }
+        if (tickets <= 1) delete next[scope]
+        else next[scope] = tickets - 1
+        return { preApprovedAgentSpend: next }
+      })
+      return Promise.resolve(true)
+    }
     return new Promise<boolean>((resolve) => {
       const entry = { ...req, resolve }
       // 队首空着就直接显；否则排队（根治：绝不覆盖已在等待的 resolve）。

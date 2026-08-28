@@ -19,6 +19,7 @@ vi.mock("../runtime", async () => {
       model: { modelKey: "acme-video", kind: "video" },
       apiKey: "k",
     }),
+    findTaskMapping: () => VIDEO_MAPPING,
   };
 });
 
@@ -83,6 +84,18 @@ describe("未登记动词的端到端轮询行为", () => {
     expect(last.result.status).toBe("failed");
     // 错误信息必须如实带上上游原话，用户能拿去平台核对，我们能据此补进 statusMapping。
     expect(last.result.error).toContain("failure");
+  });
+
+  it("缓存 miss 可无状态重建时，查询断网必须抛出，不能伪装成未知任务", async () => {
+    const { fetchTaskResult } = await import("./taskResultQuery");
+    executeProfileOperation.mockRejectedValueOnce(new TypeError("fetch failed"));
+    await expect(fetchTaskResult({
+      taskId: "task-after-restart",
+      vendor: "acme",
+      modelKey: "acme-video",
+      taskKind: "text_to_video",
+      projectId: "project-1",
+    })).rejects.toThrow(/fetch failed/);
   });
 
   it("认得的动词照常走，不受影响（processing 一直是 running，不会被判死）", async () => {

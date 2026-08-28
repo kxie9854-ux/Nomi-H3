@@ -13,7 +13,7 @@ import type { AddressInfo } from 'node:net'
 import type { FetchTaskResultFn, RunTaskFn } from './core'
 import { RpcError } from './dispatcher'
 import { createDiskGateway, createHybridGateway, createRendererGateway, withPreApprovedSpend, type ProjectGateway } from './gateway'
-import { isRendererAvailable } from './rendererBridge'
+import { isRendererAvailable, requestRenderer } from './rendererBridge'
 import { resolveMcpOrigin, verifyToken } from './security'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
 import { handleArtifactPreviewHttpRequest, withAssetPreview } from '../productionRun/artifactPreviewHttpServer'
@@ -26,6 +26,8 @@ import { rpcErrorWirePayload } from './mcpRpcError'
 import type { ProjectLeaseAuthority } from './projectLease'
 import type { ApprovalReceiptAuthority } from './approvalReceipt'
 import type { McpGenerationPolicy } from './mcpGenerationPolicy'
+import { importDirectorSkillMarkdown } from '../codexAppServer/directorSkills'
+import { getSettingsRoot } from '../settings/settingsRoot'
 
 export type RpcServerOptions = {
   /** 真实生成入口（runtime.runTask）。注入式：headless host 与 app 各自传同一份。 */
@@ -82,6 +84,9 @@ export type RpcServerHandle = {
   port: number
   close: () => Promise<void>
 }
+
+const RENDERER_ASSEMBLE_TIMEOUT_MS = 15_000
+const RENDERER_EXPORT_TIMEOUT_MS = 30 * 60_000
 
 /** 启动 RPC server，监听 127.0.0.1 随机端口。返回端口与关闭句柄。 */
 export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHandle> {
@@ -166,6 +171,25 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
           // 审片环（W1）：GUI-开着的 RPC 路复用同一份主进程 deps（judge/抽帧/重试都在主进程跑，与 headless 同实现，
           // 无并行版 P1）。生成在主进程 core、判分也在主进程，路径①两条传输吃同一 makeShotVerifyDeps。
           makeVerifyDeps: (verifyCtx) => makeShotVerifyDeps(verifyCtx),
+          arrangeTimeline: async ({ projectId, nodeIds }) => {
+            if (!isRendererAvailable() || !isProjectOpen(projectId)) {
+              throw new RpcError('请在 Nomi 里打开这个项目后再排成片', 409)
+            }
+            return requestRenderer('timeline.assemble', { projectId, ...(nodeIds?.length ? { nodeIds } : {}) }, RENDERER_ASSEMBLE_TIMEOUT_MS)
+          },
+          exportTimeline: async ({ projectId, outputName }) => {
+            if (!isRendererAvailable() || !isProjectOpen(projectId)) {
+              throw new RpcError('请在 Nomi 里打开这个项目后再导出成片', 409)
+            }
+            return requestRenderer(
+              'timeline.export',
+              { projectId, ...(outputName ? { outputName } : {}) },
+              RENDERER_EXPORT_TIMEOUT_MS,
+            )
+          },
+          saveDirectorSkill: async ({ markdown, fileName }) => {
+            return importDirectorSkillMarkdown(getSettingsRoot(), markdown, fileName)
+          },
           // 画布方案已在聊天里确认（协议层 elicitation-first）→ addNodes 预批准方案门、渲染层不再弹卡（免双问）。
           //
           // 为什么这里敢信客户端传的 planConfirmed（对比 origin「never trust」的硬边界）：方案门守的是

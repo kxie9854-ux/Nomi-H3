@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "id": "2026-08-29-h3-fork-integration",
+  "problem_type": "fork capabilities bypassing upstream catalog and task invariants",
+  "symptom": "Replaying the Nomi-H3 snapshot directly onto Nomi v0.21 would create parallel vendor seeds, incomplete generated archetype projections, and provider-task recovery paths that disagreed with the upstream capability core.",
+  "direct_cause": "The fork was built from v0.20.1 while upstream subsequently centralized builtin vendor seeds, archetype generation, task recovery, skill storage, and Codex model adapters behind new contracts.",
+  "class_root": "Fork-owned H3 and Codex capabilities had to be projected through the current upstream owners instead of preserving their former direct-write and duplicate-registry seams.",
+  "affected_population": [
+    "Nomi-H3 projects using AutoDL.art MiniMax H3 generation or task recovery",
+    "Users selecting Codex as the text brain or importing director skills",
+    "Existing projects loading generated archetype identifiers, modes, and wire defaults after the v0.21 migration"
+  ],
+  "scope_paths": [
+    "electron/catalog/archetypeIdentifiers.generated.ts",
+    "electron/catalog/archetypeModes.generated.ts",
+    "electron/catalog/archetypeWireDefaults.generated.ts",
+    "electron/catalog/archetypeWireDefaults.video.generated.ts",
+    "electron/catalog/autodlArtH3.ts",
+    "electron/catalog/autodlArtH3Mode.ts",
+    "electron/catalog/builtinVendorSeeds.ts",
+    "electron/catalog/codexChat.ts",
+    "electron/catalog/codexCli.ts",
+    "electron/catalog/codexImages.ts",
+    "electron/catalog/paramTranslate.ts",
+    "electron/catalog/seedBuiltins.ts",
+    "electron/skills/skillStore.ts",
+    "electron/tasks/taskResultQuery.ts"
+  ],
+  "entry_points": [
+    "Builtin catalog seeding and generated archetype projection",
+    "AutoDL.art H3 create and resume-only task flows",
+    "Codex CLI text and image model adapters",
+    "Director skill discovery and import",
+    "Provider task result query and recovery"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "This integration preserves the already captured and tested Nomi-H3 provider contracts while moving them through Nomi v0.21's internal owners; it does not infer or change any provider endpoint, field, authentication method, or model capability.",
+  "invariants": [
+    "AutoDL.art is declared once in BUILTIN_VENDOR_SEEDS and every seed consumer derives from that owner.",
+    "Generated archetype files are regenerated from their source descriptors and pass the upstream equality gates.",
+    "resume_only can only query a persisted provider task and can never silently submit a new paid generation.",
+    "Codex remains a local text/image adapter and does not pass through vendor API-key connection construction.",
+    "Imported director skills are normalized and stored by the shared skill store rather than written through a second path."
+  ],
+  "regression_tests": [
+    "electron/catalog/autodlArtH3.test.ts",
+    "electron/catalog/autodlArtH3Mode.test.ts",
+    "electron/catalog/codexCli.test.ts",
+    "electron/catalog/codexSeed.test.ts",
+    "electron/catalog/paramTranslate.test.ts",
+    "electron/tasks/unrecognizedTaskStatusQuery.test.ts"
+  ],
+  "migration": "No user project schema bump. Existing H3 catalog rows and provider task identifiers are normalized through the v0.21 catalog/task owners; generated archetype projections are rebuilt from source descriptors.",
+  "residual_risks": [
+    "AutoDL.art provider behavior can still change independently; future endpoint or model changes require a fresh official-document check and trial capture.",
+    "Old local Git refs may still retain the pre-redaction sample-response blob, so those refs must not be pushed and any real credential matching the sample identifiers should be rotated."
+  ]
+}

@@ -79,8 +79,13 @@ export function addClipAtFrame(timeline: TimelineState, clip: TimelineClip, trac
   let inserted = false
   const tracks = timeline.tracks.map((track) => {
     if (track.type !== trackType) return track
+    // 同一素材可以多次入轨，但每个片段必须是独立实体。旧逻辑复用入参 id，且碰撞检测把
+    // “同 id”误当正在移动的自己而跳过，结果既重 key 又重叠。先铸唯一 id，再走统一碰撞模型。
+    const uniqueClip = track.clips.some((current) => current.id === clip.id)
+      ? { ...clip, id: buildUniqueClipId(track, clip.id) }
+      : clip
     // 与移动同一碰撞模型：期望位被占则滑入最近合法空位，插入永不静默失败
-    const placed = withClipStartFrame(clip, resolveLegalInsertStart(track, clip, startFrame))
+    const placed = withClipStartFrame(uniqueClip, resolveLegalInsertStart(track, uniqueClip, startFrame))
     inserted = true
     return {
       ...track,

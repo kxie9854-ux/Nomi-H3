@@ -7,7 +7,7 @@ import { useSpendConfirmStore } from './spendConfirm'
 // 前一个决议后自动出下一个，两个 resolve 都会兑现、互不覆盖。
 
 function resetStore() {
-  useSpendConfirmStore.setState({ pending: null, queue: [], lightSuppressed: false })
+  useSpendConfirmStore.setState({ pending: null, queue: [], lightSuppressed: false, preApprovedAgentSpend: {} })
 }
 
 describe('spendConfirm FIFO 队列 (B4 · 竞态不丢 resolve)', () => {
@@ -65,6 +65,37 @@ describe('spendConfirm FIFO 队列 (B4 · 竞态不丢 resolve)', () => {
     expect(ok).toBe(true)
     expect(useSpendConfirmStore.getState().pending).toBeNull()
     expect(useSpendConfirmStore.getState().queue).toHaveLength(0)
+  })
+
+  it('Codex 面板的同作用域授权按明示上限逐次消费，且不会放行其它模型服务', async () => {
+    const store = useSpendConfirmStore.getState()
+    store.preApproveNextAgentSpend('p1\0codex-local\0codex-imagegen', 2)
+
+    const approved = await store.requestConfirm({
+      title: '首帧',
+      message: '生成？',
+      source: 'agent',
+      agentApprovalScope: 'p1\0codex-local\0codex-imagegen',
+    })
+    expect(approved).toBe(true)
+    expect(useSpendConfirmStore.getState().pending).toBeNull()
+    await expect(store.requestConfirm({
+      title: '尾帧',
+      message: '生成？',
+      source: 'agent',
+      agentApprovalScope: 'p1\0codex-local\0codex-imagegen',
+    })).resolves.toBe(true)
+    expect(useSpendConfirmStore.getState().preApprovedAgentSpend).toEqual({})
+
+    const h3 = store.requestConfirm({
+      title: 'H3',
+      message: '生成？',
+      source: 'agent',
+      agentApprovalScope: 'p1\0autodl-art\0autodl-art-h3',
+    })
+    expect(useSpendConfirmStore.getState().pending?.title).toBe('H3')
+    useSpendConfirmStore.getState().resolvePending(false)
+    await expect(h3).resolves.toBe(false)
   })
 
   it('勾选「本会话不再提示」在队列语义下仍生效（只对 light 请求短路后续）', async () => {

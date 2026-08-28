@@ -121,6 +121,7 @@ export type GenerationCanvasState = {
   generationAiDraft: string
   generationAiMessages: WorkbenchAiMessage[]
   generationAiCollapsed: boolean
+  generationDirector: 'codex' | 'nomi'
   canUndo: boolean
   canRedo: boolean
   hasClipboard: boolean
@@ -131,6 +132,7 @@ export type GenerationCanvasState = {
   setGenerationAiDraft: (draft: string) => void
   setGenerationAiMessages: (messages: WorkbenchAiMessage[] | ((messages: WorkbenchAiMessage[]) => WorkbenchAiMessage[])) => void
   setGenerationAiCollapsed: (collapsed: boolean) => void
+  setGenerationDirector: (director: 'codex' | 'nomi') => void
   resetGenerationAiConversation: () => void
   copySelectedNodes: () => void
   cutSelectedNodes: () => void

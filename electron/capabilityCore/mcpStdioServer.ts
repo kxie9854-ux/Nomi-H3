@@ -24,6 +24,8 @@ import { getProjectLocationState, getWorkspaceRepositoryDeps } from '../runtimeP
 import { dispatchAndEnrich } from './mcpResultEnrichLive'
 import { makeShotVerifyDeps } from './shotVerifyDeps'
 import { rpcErrorFromPayload } from './mcpRpcError'
+import { importDirectorSkillMarkdown } from '../codexAppServer/directorSkills'
+import { getSettingsRoot } from '../settings/settingsRoot'
 import {
   MCP_CLIENT_ENV,
   MCP_CLIENT_PROOF_ENV,
@@ -169,6 +171,9 @@ async function invoke(
     // 审片环（W1）：headless 路的真实 deps——judge 走 runTask 文本路（不花生成额度）、抽帧走主进程 ffmpeg、
     // 重试复用首发 grantId+同 nodeId 直发。judge 模型无可用 text 模型时 visionAvailable=false → 整体跳过。
     makeVerifyDeps: (verifyCtx) => makeShotVerifyDeps(verifyCtx),
+    saveDirectorSkill: async ({ markdown, fileName }) => {
+      return importDirectorSkillMarkdown(getSettingsRoot(), markdown, fileName)
+    },
   })
 }
 

@@ -41,6 +41,63 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
     expect(some.outcome).toMatchObject({ eventCount: 1, nextCursor: 6 })
   })
 
+  it('assemble_timeline：排了几段 + 下一步导出', () => {
+    const { text, outcome } = buildToolOutcome(
+      'nomi_assemble_timeline',
+      { projectId: 'p1' },
+      { arranged: 2, total: 2, skipped: [] },
+    )
+    expect(text).toContain('成片已排上时间轴')
+    expect(text).toContain('2/2')
+    expect(text).toContain('nomi_export_timeline')
+    expect(outcome).toMatchObject({ kind: 'timeline_assemble', arranged: 2, projectId: 'p1', nextActions: ['export_timeline'] })
+  })
+
+  it('export_timeline：路径 + 成片卡，不把人赶回预览区', () => {
+    const { text, outcome } = buildToolOutcome(
+      'nomi_export_timeline',
+      { projectId: 'p1' },
+      { relativePath: 'exports/film.mp4', size: 42, filmNodeId: 'film-1' },
+    )
+    expect(text).toContain('成片已导出 MP4')
+    expect(text).toContain('exports/film.mp4')
+    expect(text).toContain('film-1')
+    expect(text).toContain('成片卡已在画布上')
+    expect(text).toContain('不要让用户去预览区')
+    expect(outcome).toMatchObject({ kind: 'timeline_export', filmNodeId: 'film-1', projectId: 'p1' })
+  })
+
+  it('save_director_skill：芯片 id + 切回成片', () => {
+    const { text, outcome } = buildToolOutcome(
+      'nomi_save_director_skill',
+      {},
+      { id: 'night-market', label: 'night-market' },
+    )
+    expect(text).toContain('导演技能已保存')
+    expect(text).toContain('night-market')
+    expect(text).toContain('成片')
+    expect(outcome).toMatchObject({ kind: 'director_skill_save', id: 'night-market' })
+  })
+
+  it('group_nodes：区分新建与幂等复用，并回报跳过数', () => {
+    const created = buildToolOutcome(
+      'nomi_group_nodes',
+      { projectId: 'p1', name: '镜头 1' },
+      { created: true, group: { id: 'g1', name: '镜头 1', nodeIds: ['a', 'b'] }, skipped: [{ nodeId: 'x' }] },
+    )
+    expect(created.text).toContain('画布分组已创建')
+    expect(created.text).toContain('2 个节点')
+    expect(created.text).toContain('跳过 1 个节点')
+    expect(created.outcome).toMatchObject({ kind: 'canvas_group', groupId: 'g1', created: true, grouped: 2 })
+
+    const reused = buildToolOutcome(
+      'nomi_group_nodes',
+      { projectId: 'p1', name: '镜头 1' },
+      { created: false, group: { id: 'g1', name: '镜头 1', nodeIds: ['b', 'a'] }, skipped: [] },
+    )
+    expect(reused.text).toContain('已复用现有画布分组')
+  })
+
   it('generate：参数回显（模型/意图/参考数/截断提示词）+ 结构化 params + 工程级深链（数据+文本）', () => {
     const { text, outcome } = buildToolOutcome(
       'nomi_generate',
@@ -189,7 +246,7 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
     expect(text).toContain('judge model unavailable')
   })
 
-  it('画布低层工具维持 JSON 直出（text=null 不接管）', () => {
+  it('其余画布低层工具维持 JSON 直出（text=null 不接管）', () => {
     const { text, outcome } = buildToolOutcome('nomi_read_canvas', { projectId: 'p1' }, { nodes: [] })
     expect(text).toBeNull()
     expect(outcome).toBeNull()

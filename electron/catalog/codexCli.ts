@@ -8,6 +8,7 @@ import type { JsonRecord } from "../jsonUtils";
 import { contentTypeFromPath } from "../assets/assetPaths";
 import type { ProcessResponse, WriteAsset } from "./processOperation";
 import { materializeAssetToPath, toUrlList } from "./dreaminaInputFiles";
+import { CHATGPT_BUNDLED_CODEX } from "../codexAppServer/resolveCodexBin";
 
 type CodexFinishedOutput = { code: number; stdout: string; stderr: string };
 type CodexSpawnInvocation = { command: string; args: string[] };
@@ -98,7 +99,12 @@ export function candidateCodexBins(platform: NodeJS.Platform = process.platform,
       "codex",
     ].filter(Boolean);
   }
-  return [...codexInstallDirs(platform, home).map((dir) => path.join(dir, "codex")), "codex"];
+  return [
+    CHATGPT_BUNDLED_CODEX,
+    path.join(home, ".codex", "plugins", ".plugin-appserver", "codex"),
+    ...codexInstallDirs(platform, home).map((dir) => path.join(dir, "codex")),
+    "codex",
+  ];
 }
 
 export function resolveCodexBin(): string {
@@ -220,7 +226,7 @@ function quoteWindowsCmdArg(arg: string): string {
   return `"${arg.replace(/"/g, "\\\"")}"`;
 }
 
-function needsCmdWrapper(bin: string, platform = process.platform): boolean {
+export function needsCmdWrapper(bin: string, platform = process.platform): boolean {
   return platform === "win32" && /\.(?:cmd|bat)$/i.test(bin);
 }
 
@@ -272,6 +278,18 @@ export function describeCodexFailure(ran: CodexFinishedOutput, threadId: string)
   }
   if (!threadId) return "Codex CLI 没有返回 thread.started 事件，无法定位 generated_images 输出目录。";
   return "Codex CLI 未产生可导入的生图文件。";
+}
+
+/** `spawn` emits `error` and then `close(-2)` for ENOENT. Keep the actionable spawn error;
+ * the close handler must not overwrite it with a misleading missing-thread symptom. */
+export function resolveCodexCloseError(
+  existingError: string,
+  ran: CodexFinishedOutput,
+  threadId: string,
+  imagePath: string,
+): string {
+  if (imagePath) return "";
+  return existingError || describeCodexFailure(ran, threadId);
 }
 
 function importCodexImage(record: CodexImageJobRecord, input: CodexImageQueryInput): string[] {
@@ -409,7 +427,7 @@ export async function startCodexImageOperation(input: CodexImageInput): Promise<
       exitCode: code ?? -1,
       ...(threadId ? { threadId } : {}),
       ...(imagePath ? { imagePath } : {}),
-      error: imagePath ? "" : describeCodexFailure(ran, threadId),
+      error: resolveCodexCloseError(current.error, ran, threadId, imagePath),
     });
     liveJobs.delete(jobId);
     try { rmSync(workDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }

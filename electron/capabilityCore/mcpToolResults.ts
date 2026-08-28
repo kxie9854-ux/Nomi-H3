@@ -12,6 +12,9 @@ import { stripInternalEnrichFields } from './mcpResultEnrich'
 import { projectGenerationRecovery } from './generationRecoveryProjection'
 
 export { buildToolErrorOutcome } from './mcpToolErrorResults'
+import { safeArtifactValue } from './mcpArtifactSanitize'
+import { buildCanvasGroupOutcome, buildDirectorSaveSkillOutcome, buildTimelineAssembleOutcome, buildTimelineExportOutcome } from './mcpTimelineToolResults'
+export { sanitizeArtifactResource } from './mcpArtifactSanitize'
 
 export type ResultLocale = 'zh-CN' | 'en'
 
@@ -83,26 +86,6 @@ function truncate(text: string, max = 40): string {
 /** Artifact bodies are already sanitized by the production projection, but this final MCP boundary
  * still drops credential/path-shaped fields if a legacy run contains one. Never expose a local path,
  * provider URL, token, or API key merely because an old snapshot carried it. */
-function safeArtifactValue(value: unknown, key = ''): unknown {
-  if (Array.isArray(value)) return value.map((item) => safeArtifactValue(item))
-  if (value && typeof value === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
-      if (/api.?key|secret|authorization|provider.?url|private.?url|access.?token/i.test(childKey)) continue
-      out[childKey] = safeArtifactValue(childValue, childKey)
-    }
-    return out
-  }
-  if (typeof value === 'string' && /path|file/i.test(key) && (/^(?:\/|[A-Za-z]:[\\/])/.test(value) || value.includes('\\'))) return '[redacted]'
-  if (typeof value === 'string' && /^https?:\/\//i.test(value) && /provider|vendor|source/i.test(key)) return '[redacted]'
-  return value
-}
-
-/** Final redaction seam shared by tool results and the versioned artifact resource reader. */
-export function sanitizeArtifactResource(value: unknown): unknown {
-  return safeArtifactValue(value)
-}
-
 function safeNomiDeepLink(value: string): string {
   if (/^nomi:\/\/project\/[A-Za-z0-9._-]{1,160}(?:\/run\/[A-Za-z0-9._-]{1,160}(?:\?artifact=[A-Za-z0-9._-]{1,160})?|\/node\/[A-Za-z0-9._-]{1,160})?$/.test(value)) return value
   return ''
@@ -710,6 +693,22 @@ export function buildToolOutcome(
         openInNomi: openInNomi || null,
       },
     }
+  }
+
+  if (toolName === 'nomi_group_nodes') {
+    return buildCanvasGroupOutcome(value, args, ctx.locale, projectId, openLine)
+  }
+
+  if (toolName === 'nomi_assemble_timeline') {
+    return buildTimelineAssembleOutcome(value, ctx.locale, projectId, openLine, openInNomi || null)
+  }
+
+  if (toolName === 'nomi_export_timeline') {
+    return buildTimelineExportOutcome(value, ctx.locale, projectId, openLine, openInNomi || null)
+  }
+
+  if (toolName === 'nomi_save_director_skill') {
+    return buildDirectorSaveSkillOutcome(value, ctx.locale, openLine)
   }
 
   if (toolName === 'nomi_generate') {

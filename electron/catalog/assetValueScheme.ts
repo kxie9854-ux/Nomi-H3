@@ -70,6 +70,15 @@ export function isLocalizableAssetValue(value: unknown): boolean {
   return scheme === "nomi-local" || scheme === "inline-data";
 }
 
+/** 递归收集任意 JSON 结构里所有待本地化素材值（去重）。
+ * 放在无 Node 依赖的形态模块里，让 renderer 不必跨进 assetLocalization 的上传/XML 实现。 */
+export function collectLocalAssetUrls(value: unknown, out: Set<string> = new Set()): Set<string> {
+  if (isLocalizableAssetValue(value)) out.add(value as string);
+  else if (Array.isArray(value)) for (const item of value) collectLocalAssetUrls(item, out);
+  else if (value && typeof value === "object") for (const item of Object.values(value)) collectLocalAssetUrls(item, out);
+  return out;
+}
+
 /** 内容派生的短标签，给内联素材当文件名后缀用（同一份字节永远同名，两份不同字节几乎不同名）。
  *  只吃头尾各 8KB + 总长度：整段 FNV 对几十 MB 的视频要空转几千万次，而这里只为「别重名」。 */
 function contentTag(bytes: Uint8Array): string {

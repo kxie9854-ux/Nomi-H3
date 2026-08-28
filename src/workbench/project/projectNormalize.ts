@@ -80,6 +80,7 @@ export function normalizePayload(input: unknown): WorkbenchProjectPayload {
   return {
     workbenchDocument: normalizeWorkbenchDocument(payload.workbenchDocument),
     timeline: normalizeTimeline(payload.timeline),
+    previewAspectRatio: payload.previewAspectRatio ?? '16:9',
     generationCanvas: payload.generationCanvas,
     categories: normalizeCategories(payload.categories),
     generationCanvasLastSeq: payload.generationCanvasLastSeq,

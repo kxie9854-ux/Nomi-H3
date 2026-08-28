@@ -1,8 +1,8 @@
 // 能力核 · MCP 付费生成的会话级信任 + 文案（见 plan 2026-08-19-session-scoped-spend-trust.md）。
 //
 // 治用户原话「那这样反复去软件确认 不是太麻烦了」——重点在**反复**。某项目首次付费生成照旧问真人，
-// 批准后本会话该项目后续生成不再逐次问。信任**纯内存**、挂协议实例（= 一条 MCP 连接/会话）闭包，
-// 连接断随进程亡、不持久化；按 projectId 隔离（每连接一个协议实例故 session 天然分开）。
+// 批准后本会话该项目、同一模型服务的后续生成不再逐次问。信任**纯内存**、挂协议实例闭包，
+// 连接断随进程亡、不持久化；按 projectId + vendor + modelKey 隔离，避免静帧授权顺带放行昂贵视频。
 //
 // 与 mcpPlanTrust 刻意**不合并**：方案门免费可撤、无计数无阈值；付费门要计数 + 再问 + 授权范围披露。
 // 共同点只有一个 Set<projectId>（8 行），为它造抽象层会做出带一半没人用的参数的东西（P1 的反面）。
@@ -19,30 +19,31 @@
  */
 export const SPEND_TRUST_REASK_AFTER = 20
 
-/** 一条 MCP 会话内的付费信任集（projectId 粒度）。协议实例各持一个，互不共享。 */
+export function createSpendTrustScope(projectId: string, vendor: unknown, modelKey: unknown): string {
+  if (!projectId) return ''
+  return [projectId, String(vendor || 'default-vendor'), String(modelKey || 'default-model')].join('\u0000')
+}
+
+/** 一条 MCP 会话内的付费信任集（项目 + 模型服务粒度）。协议实例各持一个，互不共享。 */
 export function createSpendTrustStore() {
-  // projectId → 自上次真人批准以来，已「免问放行」的次数。没有键 = 该项目本会话从没批准过。
+  // scopeKey → 自上次真人批准以来，已「免问放行」的次数。
   const passesSinceApproval = new Map<string, number>()
   return {
-    /** 该项目本会话已批准过、且还没用满免问额度 → 这次不必再问。 */
-    isTrusted(projectId: string): boolean {
-      if (!projectId) return false
-      const used = passesSinceApproval.get(projectId)
+    isTrusted(scopeKey: string): boolean {
+      if (!scopeKey) return false
+      const used = passesSinceApproval.get(scopeKey)
       return used !== undefined && used < SPEND_TRUST_REASK_AFTER
     },
-    /** 真人批准后记信任；重新批准 = 免问计数归零（重新给满额度）。空 projectId 不记（无从隔离）。 */
-    trust(projectId: string): void {
-      if (projectId) passesSinceApproval.set(projectId, 0)
+    trust(scopeKey: string): void {
+      if (scopeKey) passesSinceApproval.set(scopeKey, 0)
     },
-    /** 免问放行一次 → 计数 +1。只对已信任项目有意义；没批准过的项目不该走到这里。 */
-    countPass(projectId: string): void {
-      if (!projectId) return
-      const used = passesSinceApproval.get(projectId)
-      if (used !== undefined) passesSinceApproval.set(projectId, used + 1)
+    countPass(scopeKey: string): void {
+      if (!scopeKey) return
+      const used = passesSinceApproval.get(scopeKey)
+      if (used !== undefined) passesSinceApproval.set(scopeKey, used + 1)
     },
-    /** 该项目本会话曾批准过吗——用来分辨「首次问」还是「用满额度后再问」，决定文案。 */
-    hasApprovedBefore(projectId: string): boolean {
-      return projectId ? passesSinceApproval.has(projectId) : false
+    hasApprovedBefore(scopeKey: string): boolean {
+      return scopeKey ? passesSinceApproval.has(scopeKey) : false
     },
   }
 }
@@ -66,7 +67,7 @@ export function spendConfirmElicit(costHint: string, reask: boolean): {
   title: string
   description: string
 } {
-  const scope = `批准后，本会话在这个项目里的后续生成不再逐次询问（最多 ${SPEND_TRUST_REASK_AFTER} 次，之后会再确认一次）。`
+  const scope = `批准后，本会话在这个项目里使用同一模型服务的后续生成不再逐次询问（最多 ${SPEND_TRUST_REASK_AFTER} 次，切换模型服务或达到上限会再确认）。`
   const reviewNote = `本次生成含自动审片，画面不达标会定向重试最多 ${SPEND_AUTO_RETRY_MAX} 次（重试也算这次生成的额度）。`
   return {
     message: reask
@@ -74,5 +75,15 @@ export function spendConfirmElicit(costHint: string, reask: boolean): {
       : `${costHint}\n${reviewNote}\n${scope}\n确认现在生成吗？`,
     title: '确认生成',
     description: `确认后将消耗模型额度生成；取消则不生成、不花费。${reviewNote}${scope}`,
+  }
+}
+
+export function spendConfirmRequest(costHint: string, reask: boolean, scopeKey: string) {
+  return {
+    ...spendConfirmElicit(costHint, reask),
+    meta: {
+      nomiSpendApprovalScope: scopeKey,
+      nomiSpendApprovalPasses: SPEND_TRUST_REASK_AFTER,
+    },
   }
 }

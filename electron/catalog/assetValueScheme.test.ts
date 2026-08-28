@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   classifyAssetValue,
+  collectLocalAssetUrls,
   describeAssetValue,
   isLocalizableAssetValue,
   parseInlineDataAsset,
@@ -14,6 +15,12 @@ const MP4_BYTES = Buffer.concat([Buffer.from([0x00, 0x00, 0x00, 0x10]), Buffer.f
 const dataUrl = (mime: string, bytes: Buffer) => `data:${mime};base64,${bytes.toString("base64")}`;
 
 describe("classifyAssetValue", () => {
+  it("在纯形态边界递归收集本地素材，不要求 renderer 加载上传或 XML 实现", () => {
+    const first = "nomi-local://asset/p/a.png";
+    const inline = dataUrl("image/png", PNG_BYTES);
+    expect(Array.from(collectLocalAssetUrls({ first, nested: [inline, first, "https://cdn/a.png"] }))).toEqual([first, inline]);
+  });
+
   it("认 nomi-local 与 data: 媒体内联为「要本地化」", () => {
     expect(classifyAssetValue("nomi-local://asset/p/a.png")).toBe("nomi-local");
     expect(classifyAssetValue(dataUrl("image/png", PNG_BYTES))).toBe("inline-data");

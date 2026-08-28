@@ -16,6 +16,7 @@ import {
 } from "./assetTransportPolicy";
 import {
   classifyAssetValue,
+  collectLocalAssetUrls,
   describeAssetValue,
   humanSize,
   isLocalizableAssetValue,
@@ -106,13 +107,8 @@ export function ingestionAccepts(ingestion: AssetIngestion, kind: AssetMediaKind
   return accepts.includes(kind);
 }
 
-/** 递归收集任意 JSON 结构里所有待本地化素材值(nomi-local:// / data:,去重)。标量/数组元素/对象值都认。 */
-export function collectLocalAssetUrls(value: unknown, out: Set<string> = new Set()): Set<string> {
-  if (isLocalAssetUrl(value)) out.add(value);
-  else if (Array.isArray(value)) for (const item of value) collectLocalAssetUrls(item, out);
-  else if (value && typeof value === "object") for (const item of Object.values(value)) collectLocalAssetUrls(item, out);
-  return out;
-}
+// 兼容既有 electron 调用与测试；实现住无 Node 依赖的形态模块，renderer 不再加载本文件。
+export { collectLocalAssetUrls } from "./assetValueScheme";
 
 /** 递归收集所有「谁都够不着」的素材值(blob:/file:)——判定与理由见 assetValueScheme.classifyAssetValue。 */
 export function collectUnreachableAssetValues(value: unknown, out: Set<string> = new Set()): Set<string> {

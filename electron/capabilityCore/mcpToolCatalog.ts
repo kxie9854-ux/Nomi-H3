@@ -72,6 +72,11 @@ export const MCP_TOOL_CATALOG = [
               modelKey: { type: 'string', description: '可选：模型标识。与 vendor 一起给；不给则打开节点时自动选默认模型。' },
               x: { type: 'number', description: '可选：显式落点 x（给了则优先于自动布局）。' },
               y: { type: 'number', description: '可选：显式落点 y（给了则优先于自动布局）。' },
+              assetUrl: {
+                type: 'string',
+                description:
+                  '可选：把 nomi_import_asset 返回的 nomi-local:// 地址绑成节点产物（BGM/参考图导入后不必再生成）。只接受 nomi-local://。',
+              },
             },
           },
         },
@@ -83,7 +88,10 @@ export const MCP_TOOL_CATALOG = [
   },
   {
     name: 'nomi_connect_nodes',
-    description: '连线（参考关系）。connections=[{source,target,mode?}]，mode 缺省 reference。',
+    description:
+      '连线（参考关系）。connections=[{source,target,mode?}]。'
+      + 'mode 缺省 reference。多镜定妆：角色定妆图 → 各镜首/尾静帧用 character_ref；场景定妆图 → 静帧用 composition_ref；'
+      + '首尾帧到视频用 first_frame / last_frame。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -97,6 +105,41 @@ export const MCP_TOOL_CATALOG = [
     },
     method: 'canvas.connect',
     build: (a: Record<string, unknown>) => ({ projectId: a.projectId, connections: a.connections || [] }),
+  },
+  {
+    name: 'nomi_group_nodes',
+    description:
+      '把至少 2 个已有画布节点收进一个命名分组。分类从节点自动推导；跨分类节点会跳过并回报。'
+      + '节点已在别组时会移动到新组；相同名称与相同成员重复调用会复用原组，不制造重复分组。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        nodeIds: { type: 'array', items: { type: 'string' }, minItems: 2, description: '要编组的既有节点 id（至少 2 个）。' },
+        name: { type: 'string', description: '用户可见的分组名，如“镜头 1”或“角色参考”。' },
+      },
+      required: ['projectId', 'nodeIds', 'name'],
+      additionalProperties: false,
+    },
+    method: 'canvas.groupNodes',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, nodeIds: a.nodeIds || [], name: a.name }),
+  },
+  {
+    name: 'nomi_freeze_nodes',
+    description:
+      '把已出图的角色/场景/道具卡冻结为定妆。未出图或非这类卡会跳过并回报。'
+      + '多镜在铺各镜静帧前先冻结；重复调用已冻结的卡是安全的。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        nodeIds: { type: 'array', items: { type: 'string' }, minItems: 1, description: '要冻结的角色/场景/道具节点 id。' },
+      },
+      required: ['projectId', 'nodeIds'],
+      additionalProperties: false,
+    },
+    method: 'canvas.freezeNodes',
+    build: (a: Record<string, unknown>) => ({ projectId: a.projectId, nodeIds: a.nodeIds || [] }),
   },
   {
     name: 'nomi_set_node_prompt',
@@ -371,9 +414,10 @@ export const MCP_TOOL_CATALOG = [
     name: 'nomi_import_asset',
     description:
       '把**本机文件**导入项目当素材，返回可直接引用的 nomi-local:// 地址。'
-      + '用它把手绘帧 / 截图 / 用户给的参考图弄进来——导入后把返回的 url 放进 nomi_generate 的 references，'
-      + '或当画布节点的参考源。只收图片与视频（png/jpg/webp/gif/bmp/tiff/heic/mp4/mov/webm/m4v），'
-      + '单个 ≤64MB，须传**绝对路径**；系统/凭据目录（如 ~/.ssh、~/.nomi）的文件会被拒绝。',
+      + '用它把手绘帧 / 截图 / 用户给的参考图 / BGM 音频弄进来——导入后把返回的 url 放进 nomi_generate 的 references，'
+      + '或当画布节点的参考源。只收图片、视频与音频（png/jpg/webp/gif/bmp/tiff/heic/mp4/mov/webm/m4v/mp3/wav/m4a/aac/flac），'
+      + '单个 ≤64MB，须传**绝对路径**；系统/凭据目录（如 ~/.ssh、~/.nomi）的文件会被拒绝。'
+      + '导入 BGM 后用 nomi_add_nodes 建 kind=audio 节点，并把返回的 url 填进 assetUrl，再 nomi_assemble_timeline，然后 nomi_export_timeline。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -392,7 +436,10 @@ export const MCP_TOOL_CATALOG = [
     description:
       '触发一次生成（用 Nomi 的 archetype 正确组装参数 + 落资产回节点）。会花用户额度。intent=image/video/text/audio。'
       + '画幅/时长要显式传 aspect_ratio/resolution/duration——**写进 prompt 里模型收不到**（真机实测：写"16:9"进提示词仍出方图，'
-      + '因为渠道有默认 1:1 会盖过）。这三个参数会以调用方优先合并进真实请求（caller-wins），不传则用该模型默认。',
+      + '因为渠道有默认 1:1 会盖过）。这三个参数会以调用方优先合并进真实请求（caller-wins），不传则用该模型默认。'
+      + '本 fork 出视频只用 vendor=autodl-art、modelKey=autodl-art-h3。默认先出静帧再 H3。没有独立图生视频：只给一张首帧会被拒，请补尾帧或改多图参考。画布上 first_frame/last_frame 连线会自动填槽。没有参考视频槽。'
+      + 'H3 分辨率枚举是中文：480p竖 / 768p竖 / 480p横 / 768p横。首尾帧用 first_frame+last_frame（URL）；多图参考用 references；参考音频用 audio_references。'
+      + '节点已有远端 taskId 时用 resume_only=true：只续查，不再确认或提交；没有可续查任务会直接拒绝。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -425,22 +472,112 @@ export const MCP_TOOL_CATALOG = [
             + '首尾都给，运动的落点被两端夹住，不会「动到一半人就变了」。'
             + '仅在该模型确有尾帧槽时才会生效并多花一张图的额度；模型没有这个槽就自动忽略。',
         },
+        first_frame: {
+          type: 'string',
+          description: '首尾帧模式：首帧图 URL（nomi-local:// 或 https）。AutoDL.art 必须同时给 last_frame。',
+        },
+        last_frame: {
+          type: 'string',
+          description: '首尾帧模式：尾帧图 URL。与 first_frame 成对；只给首帧会被拒。',
+        },
+        audio_references: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '多图参考可选：最多 3 段参考音频 URL，每段 2–15 秒。',
+        },
+        resume_only: {
+          type: 'boolean',
+          description: '仅续查该节点已保存的远端任务。true 时绝不触发付费确认或新提交；没有 taskId 就报错。',
+        },
       },
       required: ['projectId', 'vendor', 'modelKey', 'intent', 'prompt'],
     },
     method: 'generate',
+    build: (a: Record<string, unknown>) => {
+      const params = buildGenerateParams(a)
+      const autodlVideo = a.vendor === 'autodl-art' && a.modelKey === 'autodl-art-h3' && a.intent === 'video'
+      const hasI2vSlots = Boolean(
+        params.first_frame
+        || params.last_frame
+        || (Array.isArray(params.reference_image_urls) && params.reference_image_urls.length)
+        || (Array.isArray(params.reference_audio_urls) && params.reference_audio_urls.length),
+      )
+      return {
+        projectId: a.projectId, vendor: a.vendor, modelKey: a.modelKey, intent: a.intent, prompt: a.prompt, nodeId: a.nodeId,
+        ...(a.resume_only === true ? { resumeOnly: true } : {}),
+        // AutoDL.art 首尾帧/多图走 extras 槽，不走 references，以免 I2V 两跳再烧一张图。
+        ...(autodlVideo ? {} : (a.references ? { references: a.references } : {})),
+        ...(autodlVideo && hasI2vSlots ? { kind: 'image_to_video' } : {}),
+        ...(typeof a.firstFrameDesc === 'string' && a.firstFrameDesc.trim() ? { firstFrameDesc: a.firstFrameDesc.trim() } : {}),
+        ...(typeof a.lastFrameDesc === 'string' && a.lastFrameDesc.trim() ? { lastFrameDesc: a.lastFrameDesc.trim() } : {}),
+        ...(Object.keys(params).length ? { params } : {}),
+      }
+    },
+  },
+  {
+    name: 'nomi_assemble_timeline',
+    description:
+      '把画布上已生成的镜头按镜序追加到时间轴成片。省略 nodeIds 则排所有有结果的视频（缺视频用首帧占位），'
+      + '并把已导入/已生成的 audio 节点排到音频轨（BGM）。已在时间轴上的镜头会跳过。项目必须在 Nomi 里打开。'
+      + '排完后立刻 nomi_export_timeline 导出 MP4，不要让用户手拖或去预览区点导出。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        nodeIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '可选：只排这些节点。省略则按画布镜序排全部可成片镜头。',
+        },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    method: 'timeline.assemble',
     build: (a: Record<string, unknown>) => ({
-      projectId: a.projectId, vendor: a.vendor, modelKey: a.modelKey, intent: a.intent, prompt: a.prompt, nodeId: a.nodeId, references: a.references,
-      // 首尾帧描述直通能力核（core 自己判「模型有没有这个槽」再决定要不要多出那张图）。
-      ...(typeof a.firstFrameDesc === 'string' && a.firstFrameDesc.trim() ? { firstFrameDesc: a.firstFrameDesc.trim() } : {}),
-      ...(typeof a.lastFrameDesc === 'string' && a.lastFrameDesc.trim() ? { lastFrameDesc: a.lastFrameDesc.trim() } : {}),
-      // 画幅/时长经既有 extras/params 通道下沉到 applyHeadlessParamDefaults（caller-wins）。装配为规范化的
-      // params 交给 core.generateOnProject（它把 params 铺进 extras）——键名归一在 buildGenerateParams，
-      // 不 hardcode 任何 vendor：比例同时铺 aspect_ratio/size/aspectRatio 三别名，覆盖不同 archetype 读的键。
-      ...(() => {
-        const params = buildGenerateParams(a)
-        return Object.keys(params).length ? { params } : {}
-      })(),
+      projectId: a.projectId,
+      ...(Array.isArray(a.nodeIds) ? { nodeIds: a.nodeIds } : {}),
+    }),
+  },
+  {
+    name: 'nomi_export_timeline',
+    description:
+      '把当前时间轴硬切导出为 MP4（ffmpeg），并在画布落下「剪辑成片」视频卡。'
+      + '时间轴必须已有画面（先 nomi_assemble_timeline）。项目必须在 Nomi 里打开。'
+      + '不重新生成、不花额度。不要让用户去预览区手点导出。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string' },
+        outputName: { type: 'string', description: '可选：导出文件名（如 film.mp4）。省略则自动命名。' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    method: 'timeline.export',
+    build: (a: Record<string, unknown>) => ({
+      projectId: a.projectId,
+      ...(typeof a.outputName === 'string' && a.outputName.trim() ? { outputName: a.outputName.trim() } : {}),
+    }),
+  },
+  {
+    name: 'nomi_save_director_skill',
+    description:
+      '把一份导演 overlay 的 SKILL.md 存进本机技能库，之后可在 Codex 侧栏点选。'
+      + '只用于创建技能模式。不要用来出图或出视频。markdown 必须含 YAML frontmatter 的 name 与 description。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        markdown: { type: 'string', description: '完整 SKILL.md 正文（含 frontmatter）。' },
+        fileName: { type: 'string', description: '可选：原文件名，frontmatter 无名时用来起 id。' },
+      },
+      required: ['markdown'],
+      additionalProperties: false,
+    },
+    method: 'director.saveSkill',
+    build: (a: Record<string, unknown>) => ({
+      markdown: a.markdown,
+      ...(typeof a.fileName === 'string' && a.fileName.trim() ? { fileName: a.fileName.trim() } : {}),
     }),
   },
 ] as const

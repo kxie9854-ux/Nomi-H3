@@ -1,0 +1,15 @@
+{
+  "name": "h3-autodl-art-director",
+  "version": "1.1.0",
+  "description": "Turn a simple idea into a finished AutoDL.art H3 film on the Nomi canvas: gated steps, 1-shot or multi-shot, stills-first, then paid video.",
+  "tools": [],
+  "requiredProviders": ["video"],
+  "permissions": ["read-only", "create"],
+  "inputs": [
+    {
+      "name": "brief",
+      "description": "A simple idea or shot brief: subject, motion, duration, aspect, audio, and whether this is one shot or a short film.",
+      "required": true
+    }
+  ]
+}

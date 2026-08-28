@@ -8,6 +8,7 @@ import type { DesktopOnboardingBridge } from './onboardingBridgeTypes'
 import type { DesktopProductionRunBridge } from './productionRunBridgeTypes'
 import type { CustomCallBridge } from './modelCatalogBridgeTypes'
 import type { AgentChatStartRequest, AgentChatHistoryRequest, AgentChatToolDecision, AgentChatWireEvent } from '../../electron/harness/agentChatContracts'
+import type { CodexDesktopBridge } from './codexBridge'
 export type { ProviderKind }
 export type {
   DesktopAdapterModeResult,
@@ -749,6 +750,7 @@ export type DesktopBridge = DesktopMediaBridge & {
     importPackage: (payload: unknown) => unknown
     deleteByDir: (dirName: string) => unknown
   }
+  codex?: CodexDesktopBridge
   /** 即梦会员（dreamina CLI）：设备码登录/账户检测/安装（可选——老 preload 无此口）。 */
   dreamina?: {
     status: () => Promise<{

@@ -193,7 +193,7 @@ export function consumedCanonicalKeys(paramMap: ParamMap | undefined): string[] 
   return [...keys];
 }
 
-const PARAM_TOKEN = /\{\{\s*request\.params\.([a-zA-Z0-9_]+)\s*\}\}/g;
+const PARAM_TOKEN = /\{\{\s*request\.params\.([a-zA-Z0-9_]+)(?:\.\d+)*\s*\}\}/g;
 
 /** 扫一个 body 模板（任意嵌套 JSON）里所有 `{{request.params.X}}` 令牌引用的键。 */
 export function bodyReferencedParamKeys(body: unknown): string[] {

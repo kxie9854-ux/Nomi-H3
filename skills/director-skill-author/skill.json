@@ -1,0 +1,16 @@
+{
+  "name": "director-skill-author",
+  "version": "1.0.0",
+  "label": "创建技能",
+  "description": "把用户的方法写成 Nomi-H3 导演 overlay skill，并保存成可点芯片。",
+  "tools": [],
+  "requiredProviders": [],
+  "permissions": ["create"],
+  "inputs": [
+    {
+      "name": "brief",
+      "description": "要沉淀成导演技能的方法、风格或流程。",
+      "required": true
+    }
+  ]
+}

@@ -85,4 +85,12 @@ describe("bodyReferencedParamKeys", () => {
     };
     expect(bodyReferencedParamKeys(body).sort()).toEqual(["aspect_ratio", "resolution", "size"]);
   });
+
+  it("把数组索引令牌归回它的 canonical 参数", () => {
+    const body = {
+      ref_image_0: "{{request.params.reference_image_urls.0}}",
+      ref_image_1: "{{request.params.reference_image_urls.1}}",
+    };
+    expect(bodyReferencedParamKeys(body)).toEqual(["reference_image_urls"]);
+  });
 });

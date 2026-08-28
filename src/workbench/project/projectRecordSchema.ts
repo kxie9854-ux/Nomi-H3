@@ -2,7 +2,11 @@ import { z } from 'zod'
 
 import { createDefaultTimeline } from '../timeline/timelineMath'
 import type { TimelineState } from '../timeline/timelineTypes'
-import { createDefaultWorkbenchDocument, type WorkbenchDocument } from '../workbenchTypes'
+import {
+  createDefaultWorkbenchDocument,
+  type PreviewAspectRatio,
+  type WorkbenchDocument,
+} from '../workbenchTypes'
 import { createDefaultGenerationCanvasSnapshot } from '../generationCanvas/store/generationCanvasDefaults'
 import type { GenerationCanvasSnapshot } from '../generationCanvas/model/generationCanvasTypes'
 import { storyboardPlanSchema, type StoryboardPlan } from '../generationCanvas/agent/storyboardPlan'
@@ -47,6 +51,7 @@ export const workbenchProjectPayloadSchema = z.object({
   // generationCanvas（真实画布内容）保持必填——它是关键字段，缺它才走空项目兜底/上报。
   workbenchDocument: z.unknown().optional(),
   timeline: z.unknown().optional(),
+  previewAspectRatio: z.enum(['16:9', '9:16', '1:1', '4:5', '3:4', '4:3', '21:9']).optional(),
   // Keep project loading tolerant of legacy v0.5 category ids so the
   // v5→v6 migration can run before the stricter canvas schema is enforced.
   generationCanvas: workbenchProjectGenerationCanvasPayloadSchema,
@@ -110,6 +115,8 @@ export type WorkbenchProjectSummary = {
 export type WorkbenchProjectPayload = {
   workbenchDocument: WorkbenchDocument
   timeline: TimelineState
+  /** 项目成片画幅；老项目缺省按 16:9 归一化。 */
+  previewAspectRatio?: PreviewAspectRatio
   generationCanvas: GenerationCanvasSnapshot
   categories?: ProjectCategory[]
   /** S5-b-1:快照覆盖到日志的 seq(尾部重放游标);老项目无此字段则跳过重放。 */
@@ -140,6 +147,7 @@ export function createDefaultWorkbenchProjectPayload(): WorkbenchProjectPayload 
   return {
     workbenchDocument: createDefaultWorkbenchDocument(),
     timeline: createDefaultTimeline(),
+    previewAspectRatio: '16:9',
     generationCanvas: createDefaultGenerationCanvasSnapshot(),
     categories: cloneBuiltinCategories(),
   }

@@ -81,6 +81,24 @@
 | [2026-06-07-assistant-mockup-implementation.md](2026-06-07-assistant-mockup-implementation.md) | 助手面板对齐样张（R8 实现规范） | 🚧 |
 | [2026-06-09-创作AI附件与对话体验.md](2026-06-09-创作AI附件与对话体验.md) | 创作 AI 助手：多格式附件+对话升级 | 📋 |
 
+## Nomi-H3 导演主路径
+
+| 文件 | 一句话 | 状态 |
+|---|---|---|
+| [2026-08-23-codex-panel-spend-confirm.md](2026-08-23-codex-panel-spend-confirm.md) | Codex 侧栏付费确认与授权回执 | ✅ |
+| [2026-08-24-h3-recovery-and-canvas-group-mcp.md](2026-08-24-h3-recovery-and-canvas-group-mcp.md) | H3 断线续查与画布分组 MCP | ✅ |
+| [2026-08-24-project-director-session-persistence.md](2026-08-24-project-director-session-persistence.md) | 项目级导演会话持久化 | ✅ |
+| [2026-08-25-deferred-video-timeout.md](2026-08-25-deferred-video-timeout.md) | 延迟视频加载超时根因修复 | ✅ |
+| [2026-08-25-director-backend-setup.md](2026-08-25-director-backend-setup.md) | 导演首次打开的后端配置引导 | ✅ |
+| [2026-08-25-director-numbered-choice-fallback.md](2026-08-25-director-numbered-choice-fallback.md) | 导演编号选项的稳定兜底 | ✅ |
+| [2026-08-25-director-workspace-hydration.md](2026-08-25-director-workspace-hydration.md) | 项目级 Codex 导演工作台恢复 | ✅ |
+| [2026-08-25-next-phase-director-surface.md](2026-08-25-next-phase-director-surface.md) | 导演主路径产品化执行面 | ✅ |
+| [2026-08-26-codex-text-brain.md](2026-08-26-codex-text-brain.md) | Codex 统一承担文本大脑 | ✅ |
+| [2026-08-26-director-export-loop.md](2026-08-26-director-export-loop.md) | 导演配乐、剪辑到导出闭环 | ✅ |
+| [2026-08-26-director-skill-picker.md](2026-08-26-director-skill-picker.md) | 导演可点选 Skill 与模板 | ✅ |
+| [2026-08-26-multi-shot-identity-lock.md](2026-08-26-multi-shot-identity-lock.md) | 多镜头角色身份锁定 | ✅ |
+| [2026-08-29-upstream-v0.21-integration.md](2026-08-29-upstream-v0.21-integration.md) | 将 Nomi-H3 导演能力整合到 upstream v0.21.0 | ✅ |
+
 ## 时间轴 / 预览 / 导出
 
 | 文件 | 一句话 | 状态 |

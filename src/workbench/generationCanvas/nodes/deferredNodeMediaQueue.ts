@@ -20,6 +20,10 @@ const DEFAULT_MEDIA_LIMITS: Record<DeferredNodeMediaKind, number> = {
   video: 1,
 }
 const MEDIA_SLOT_AUTO_RELEASE_MS = 8000
+const MEDIA_LOAD_TIMEOUT_MS: Record<DeferredNodeMediaKind, number> = {
+  image: 15000,
+  video: 30000,
+}
 const MEDIA_INTERSECTION_ROOT_MARGIN = '0px'
 
 type DeferredMediaQueueEntry = {
@@ -126,6 +130,43 @@ export function requestDeferredNodeMediaSlot(
       if (!entry.activated) sortDeferredMediaQueue(kind)
     },
   }
+}
+
+/**
+ * The queue watchdog above protects global concurrency; it is not evidence that
+ * the media itself failed. Keep the user-visible load deadline separate so a
+ * healthy video is not aborted merely because first-frame decode took >8s.
+ */
+export function scheduleDeferredNodeMediaLoadTimeout(
+  kind: DeferredNodeMediaKind,
+  onTimeout: () => void,
+): () => void {
+  const timer = setTimeout(onTimeout, MEDIA_LOAD_TIMEOUT_MS[kind])
+  return () => clearTimeout(timer)
+}
+
+function releaseDeferredNodeVideoElement(video: HTMLVideoElement): void {
+  video.pause()
+  video.removeAttribute('src')
+  try {
+    video.load()
+  } catch {
+    /* Some test DOMs do not implement media loading. */
+  }
+}
+
+/**
+ * Own the concrete video DOM node through its callback ref. React 18 StrictMode
+ * replays effect cleanup while the same DOM node is still mounted; releasing src
+ * from an effect cleanup therefore leaves a connected <video> with no source.
+ * Callback refs change only when the concrete node is replaced or unmounted.
+ */
+export function replaceDeferredNodeVideoElement(
+  current: HTMLVideoElement | null,
+  next: HTMLVideoElement | null,
+): HTMLVideoElement | null {
+  if (current && current !== next) releaseDeferredNodeVideoElement(current)
+  return next
 }
 
 type IdleCapableWindow = Window & {
@@ -235,6 +276,7 @@ export function useDeferredNodeMediaSrc({
   const [retryToken, setRetryToken] = React.useState(0)
   const [placeholderElement, setPlaceholderElement] = React.useState<HTMLDivElement | null>(null)
   const releaseRef = React.useRef<(() => void) | null>(null)
+  const cancelLoadTimeoutRef = React.useRef<(() => void) | null>(null)
   const requestRef = React.useRef<DeferredNodeMediaSlotRequest | null>(null)
   const stateRef = React.useRef<DeferredNodeMediaState>('idle')
   const readySrcRef = React.useRef<string | null>(null)
@@ -254,13 +296,19 @@ export function useDeferredNodeMediaSrc({
     releaseRef.current = null
   }, [])
 
+  const cancelLoadTimeout = React.useCallback(() => {
+    cancelLoadTimeoutRef.current?.()
+    cancelLoadTimeoutRef.current = null
+  }, [])
+
   React.useEffect(() => {
+    cancelLoadTimeout()
     releaseSlot()
     requestRef.current?.cancel()
     requestRef.current = null
     setActiveSrc(readySrcRef.current === src ? (src ?? null) : null)
     transitionTo(src && readySrcRef.current === src ? 'ready' : 'idle')
-  }, [kind, releaseSlot, src, transitionTo])
+  }, [cancelLoadTimeout, kind, releaseSlot, src, transitionTo])
 
   React.useEffect(() => {
     if (!src || !placeholderElement) {
@@ -292,12 +340,23 @@ export function useDeferredNodeMediaSrc({
           releaseRef.current = release
           setActiveSrc(src)
           transitionTo('loading')
+          cancelLoadTimeout()
+          cancelLoadTimeoutRef.current = scheduleDeferredNodeMediaLoadTimeout(kind, () => {
+            if (cancelled || activeSrcRef.current !== src || stateRef.current !== 'loading') return
+            requestRef.current?.cancel()
+            requestRef.current = null
+            releaseRef.current = null
+            setActiveSrc(null)
+            transitionTo('timeout')
+          })
         },
         priorityRef.current,
         () => {
           if (cancelled || activeSrcRef.current !== src) return
+          // Slot watchdog: let the next queued item start, but keep this media
+          // element alive. A separate, kind-aware load deadline owns the
+          // user-visible timeout decision.
           releaseRef.current = null
-          transitionTo('timeout')
         },
       )
       requestRef.current = queuedRequest
@@ -308,9 +367,10 @@ export function useDeferredNodeMediaSrc({
       cancelPaintWait()
       queuedRequest?.cancel()
       if (requestRef.current === queuedRequest) requestRef.current = null
+      cancelLoadTimeout()
       releaseSlot()
     }
-  }, [isVisible, kind, readySrc, releaseSlot, retryToken, src, transitionTo])
+  }, [cancelLoadTimeout, isVisible, kind, readySrc, releaseSlot, retryToken, src, transitionTo])
 
   React.useEffect(() => {
     if (isVisible || !src || readySrc === src) return
@@ -327,9 +387,10 @@ export function useDeferredNodeMediaSrc({
     if (!loadedSrc || loadedSrc !== src || (stateRef.current !== 'loading' && stateRef.current !== 'timeout')) return false
     setReadySrc(loadedSrc)
     transitionTo('ready')
+    cancelLoadTimeout()
     releaseSlot()
     return true
-  }, [releaseSlot, src, transitionTo])
+  }, [cancelLoadTimeout, releaseSlot, src, transitionTo])
 
   const markFailed = React.useCallback(() => {
     const failedSrc = activeSrcRef.current
@@ -338,18 +399,20 @@ export function useDeferredNodeMediaSrc({
     setActiveSrc(null)
     if (readySrcRef.current === failedSrc) setReadySrc(null)
     transitionTo('error')
+    cancelLoadTimeout()
     releaseSlot()
     return true
-  }, [releaseSlot, src, transitionTo])
+  }, [cancelLoadTimeout, releaseSlot, src, transitionTo])
 
   const retry = React.useCallback(() => {
     requestRef.current?.cancel()
     requestRef.current = null
+    cancelLoadTimeout()
     releaseSlot()
     setActiveSrc(null)
     transitionTo('idle')
     setRetryToken((current) => current + 1)
-  }, [releaseSlot, transitionTo])
+  }, [cancelLoadTimeout, releaseSlot, transitionTo])
 
   return {
     activeSrc,

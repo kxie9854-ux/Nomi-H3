@@ -3,6 +3,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   buildNomiLaunchEnv,
+  closeNomiApp,
   diagnoseLaunchFailure,
   withLinuxNoSandbox,
   withPackagedPlaywrightOrigin,
@@ -101,5 +102,27 @@ describe('diagnoseLaunchFailure', () => {
 
     expect(report).toContain('启动器未捕获到主进程输出')
     expect(report).not.toContain('压根没起来')
+  })
+})
+
+describe('closeNomiApp', () => {
+  test('优雅关闭卡住时只强制终止本次启动的 Electron child', async () => {
+    let signal = ''
+    const app = {
+      close: () => new Promise(() => undefined),
+      process: () => ({ kill: (nextSignal) => { signal = nextSignal } }),
+    }
+    await closeNomiApp(app, { timeoutMs: 1 })
+    expect(signal).toBe('SIGKILL')
+  })
+
+  test('优雅关闭成功时不碰进程', async () => {
+    let killed = false
+    const app = {
+      close: async () => undefined,
+      process: () => ({ kill: () => { killed = true } }),
+    }
+    await closeNomiApp(app, { timeoutMs: 1 })
+    expect(killed).toBe(false)
   })
 })

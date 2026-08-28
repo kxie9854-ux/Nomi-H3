@@ -44,7 +44,7 @@ import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { getActiveWorkbenchProjectId } from '../../project/workbenchProjectSession'
 import { RecoverableTimeoutError } from './recoverableTimeout'
 import { parseVendorErrorFromMessage } from './vendorErrorIpc'
-import { collectLocalAssetUrls } from '../../../../electron/catalog/assetLocalization'
+import { collectLocalAssetUrls } from '../../../../electron/catalog/assetValueScheme'
 import { readParameterReferenceContract } from '../../../../electron/catalog/parameterReferenceContract'
 
 // 重导出：实现已拆到 catalogTaskResolve（节点→vendor/model/kind 选择）与

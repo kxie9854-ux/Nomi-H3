@@ -35,6 +35,16 @@ describe('normalizePayload — storyboardPlan 持久化往返(P0-6)', () => {
     const out = normalizePayload({ ...createDefaultWorkbenchProjectPayload(), generationCanvasLastSeq: 37 })
     expect(out.generationCanvasLastSeq).toBe(37)
   })
+
+  it('项目画幅往返不丢；老项目缺字段时兼容回落 16:9', () => {
+    expect(normalizePayload({
+      ...createDefaultWorkbenchProjectPayload(),
+      previewAspectRatio: '9:16',
+    }).previewAspectRatio).toBe('9:16')
+    const legacy = createDefaultWorkbenchProjectPayload()
+    delete legacy.previewAspectRatio
+    expect(normalizePayload(legacy).previewAspectRatio).toBe('16:9')
+  })
 })
 
 describe('normalizePayload — 损坏记录优雅降级（缺可默认字段不该让项目打不开）', () => {

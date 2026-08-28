@@ -8,6 +8,11 @@
 // resolution/duration 键名全站一致（wire body 直读 params.resolution / params.duration），原样铺即可
 //（duration 数字保留，taskParams 已处理数字→wire）。空/缺省不铺（不凭空造字段，保持不传时逐字节等同旧默认）。
 
+function urlList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean)
+}
+
 /** nomi_generate 的 aspect_ratio/resolution/duration → 下沉到真实请求体的 params（caller-wins 载体）。纯函数、可单测。 */
 export function buildGenerateParams(a: Record<string, unknown>): Record<string, unknown> {
   const params: Record<string, unknown> = {}
@@ -24,6 +29,22 @@ export function buildGenerateParams(a: Record<string, unknown>): Record<string, 
   // 直读 params.seed），原样铺即可；不传不铺（保持不传时逐字节等同旧默认）。
   const seed = typeof a.seed === 'number' && Number.isFinite(a.seed) ? Math.trunc(a.seed) : null
   if (seed !== null) params.seed = seed
+
+  const first = typeof a.first_frame === 'string' ? a.first_frame.trim() : ''
+  const last = typeof a.last_frame === 'string' ? a.last_frame.trim() : ''
+  if (first) {
+    params.first_frame = first
+    params.firstFrameUrl = first
+  }
+  if (last) {
+    params.last_frame = last
+    params.lastFrameUrl = last
+  }
+  const audios = urlList(a.audio_references)
+  if (audios.length) params.reference_audio_urls = audios
+  // 首尾帧模式不要把两张帧图再铺进参考图槽（会打到另一条工作流）。
+  const images = urlList(a.references)
+  if (images.length && !first) params.reference_image_urls = images
 
   return params
 }

@@ -15,10 +15,11 @@
 
 import path from 'node:path'
 
-/** 只收这些扩展名（小写比对）。图 + 视频——素材导入的全部合法用途。 */
+/** 只收这些扩展名（小写比对）。图 + 视频 + 音频（BGM 导入，不生成音乐）。 */
 export const IMPORT_ALLOWED_EXTENSIONS = [
   '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tiff', '.heic',
   '.mp4', '.mov', '.webm', '.m4v',
+  '.mp3', '.wav', '.m4a', '.aac', '.flac',
 ] as const
 
 /** 默认大小上限（字节）。64MB：4K 图与短视频素材够用，又不至于让单次导入打爆内存/磁盘。 */
@@ -82,13 +83,13 @@ export function checkImportAsset(input: ImportGuardInput): ImportGuardVerdict {
     return { ok: false, reason: '这个位置的文件不允许作为素材导入（系统/凭据/配置目录）。请把素材放到普通目录（如桌面或项目文件夹）再导入。' }
   }
   if (!input.isFile) {
-    return { ok: false, reason: '这不是一个普通文件（目录、设备或快捷方式无法作为素材导入）。请指向具体的图片或视频文件。' }
+    return { ok: false, reason: '这不是一个普通文件（目录、设备或快捷方式无法作为素材导入）。请指向具体的图片、视频或音频文件。' }
   }
   const extension = path.extname(real).toLowerCase()
   if (!(IMPORT_ALLOWED_EXTENSIONS as readonly string[]).includes(extension)) {
     return {
       ok: false,
-      reason: `只支持导入图片或视频素材（${IMPORT_ALLOWED_EXTENSIONS.join(' / ')}），收到的是「${extension || '无扩展名'}」。`,
+      reason: `只支持导入图片、视频或音频素材（${IMPORT_ALLOWED_EXTENSIONS.join(' / ')}），收到的是「${extension || '无扩展名'}」。`,
     }
   }
   const max = input.maxBytes ?? IMPORT_MAX_BYTES
@@ -117,6 +118,11 @@ export function contentTypeForExtension(extension: string): string {
     case '.m4v': return 'video/mp4'
     case '.mov': return 'video/quicktime'
     case '.webm': return 'video/webm'
+    case '.mp3': return 'audio/mpeg'
+    case '.wav': return 'audio/wav'
+    case '.m4a': return 'audio/mp4'
+    case '.aac': return 'audio/aac'
+    case '.flac': return 'audio/flac'
     default: return 'application/octet-stream'
   }
 }

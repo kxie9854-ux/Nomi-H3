@@ -446,12 +446,18 @@ Tailwind 标准 spacing 已经是 4 的倍数（`p-1` = 4px、`gap-3` = 12px）�
 
 **破坏性操作确认**：一律用 `confirmDialog / alertDialog / promptDialog`（promise 风格，`src/design/confirmDialog.tsx`，宿主 `ConfirmDialogHost` 已挂 App 根部）。**禁用原生 `window.confirm/alert/prompt`**——脱设计系统、E2E 驱动自动 dismiss 测不到、Electron/macOS 有焦点丢失史（2026-06-13 审计 A7）。危险动作传 `danger: true`。
 
-**付费生成确认 `SpendConfirmDialog`**（`src/workbench/generationCanvas/spend/SpendConfirmDialog.tsx`，挂一次于工作区根）：全仓**唯一**的付费确认 UI，三种来源共用这一个对话框（不另造并行卡，P1）：
+**付费生成确认 `SpendConfirmDialog`**（`src/workbench/generationCanvas/spend/SpendConfirmDialog.tsx`，挂一次于工作区根）：直接生成与外部 MCP 的全局付费确认 UI，三种来源共用这一个对话框（不另造并行弹窗，P1）：
 - **用户直发**（`light`）：金币图标（`IconCoin`），多一个「本会话不再提示」。
 - **agent 受理**：金币图标，每次必确认（不可 light 抑制）。
 - **外部 AI 助手（MCP）驱动**（`source: 'agent'`）：机器人图标（`IconRobot`）+ 副标「经 AI 助手（MCP）驱动」+ 明细行（节点/模型/产物）+ **60s 倒计时**（进度条 + 「N 秒后自动忽略」，到点自动按未确认返回——外部调用方那头在等，不死等）。
 - 视觉：`w-[380px] rounded-nomi-lg border-nomi-line bg-nomi-paper shadow-nomi-md`；图标位 `w-8 h-8 rounded-nomi`（agent=`bg-nomi-ink text-nomi-paper`，user=`bg-nomi-accent-soft text-nomi-accent`）；明细行 `border-nomi-line-soft divide-y`；倒计时条 `bg-nomi-ink-05`，剩 ≤10s 转 `bg-nomi-accent`。
 - 新增确认来源/字段走 `SpendConfirmRequest`（`spend/spendConfirm.ts`，单一收口），不在别处复制确认弹窗。
+
+**内嵌 Codex 导演例外（2026-08-23）**：Codex app-server 的 MCP elicitation 必须留在
+`CodexDirectorPanel` 同一条对话流里，不能跳到全局弹窗抢焦点。它只用 token 化 `section` +
+`WorkbenchButton` 组合成紧凑行内确认，不新增第二套 Modal/Store；确认范围按「项目 + 模型服务」隔离，
+所以 Codex 静帧首次确认一次，切到 AutoDL.art H3 时再明确确认一次。直接点击节点生成与外部客户端兜底仍走
+`SpendConfirmDialog`。
 
 ### 3.6 导航 navigation
 

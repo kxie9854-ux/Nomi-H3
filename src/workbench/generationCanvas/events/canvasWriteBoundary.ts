@@ -12,6 +12,7 @@ type ActionName = {
 const documentActions = {
   markReady: false, captureHistory: true, setCanvasTransform: false, setCanvasZoom: false,
   setGenerationAiDraft: false, setGenerationAiMessages: false, setGenerationAiCollapsed: false,
+  setGenerationDirector: false,
   resetGenerationAiConversation: false, copySelectedNodes: false, cutSelectedNodes: true,
   pasteNodes: true, undo: true, redo: true, readSnapshot: false, readDocumentSnapshot: false,
   restoreSnapshot: true, applyEventTail: true, applyExternalGraph: true,

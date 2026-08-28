@@ -51,4 +51,17 @@ describe('getDesktopActiveProjectId（projectId 缺失窗口的兜底）', () =>
     const { getDesktopActiveProjectId } = await import('./activeProject')
     expect(getDesktopActiveProjectId()).toBe('')
   })
+
+  it('每次 setter 都重申活动项目给可能独立重启的能力核；renderer 事件仍自行去重', async () => {
+    const setActiveProject = vi.fn()
+    vi.stubGlobal('window', {
+      localStorage: localStorageStub,
+      nomiDesktop: { capability: { setActiveProject } },
+    })
+    const { setDesktopActiveProjectId } = await import('./activeProject')
+    setDesktopActiveProjectId('project-1')
+    setDesktopActiveProjectId('project-1')
+    setDesktopActiveProjectId(null)
+    expect(setActiveProject.mock.calls).toEqual([['project-1'], ['project-1'], ['']])
+  })
 })

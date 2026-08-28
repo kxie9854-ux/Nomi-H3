@@ -8,11 +8,14 @@ import {
   connectProjectNodes,
   createNamedProject,
   deleteProjectNodes,
+  freezeProjectNodes,
   generateOnProject,
+  groupProjectNodes,
   listAllProjects,
   readProjectCanvas,
   referencesFromEdges,
   resolveCapabilityPollTimeoutMs,
+  frameUrlsFromEdges,
   setProjectNodePrompt,
 } from './core'
 import { createDiskGateway, type PlanConfirmInfo, type ProjectGateway } from './gateway'
@@ -49,6 +52,25 @@ describe('headless 轮询预算', () => {
     expect(resolveCapabilityPollTimeoutMs('image_to_video', undefined)).toBe(900_000)
     expect(resolveCapabilityPollTimeoutMs('text_to_image', undefined)).toBe(240_000)
     expect(resolveCapabilityPollTimeoutMs('image_to_video', '1234')).toBe(1234)
+  })
+})
+
+describe('frameUrlsFromEdges', () => {
+  it('reads first_frame and last_frame source assets for fl2va', () => {
+    const snap = {
+      nodes: [
+        { id: 'ff', kind: 'image', result: { url: 'nomi-local://first.jpg' } },
+        { id: 'lf', kind: 'image', result: { url: 'nomi-local://last.jpg' } },
+        { id: 'v', kind: 'video' },
+      ],
+      edges: [
+        { id: 'e1', source: 'ff', target: 'v', mode: 'first_frame' },
+        { id: 'e2', source: 'lf', target: 'v', mode: 'last_frame' },
+      ],
+      groups: [],
+      selectedNodeIds: [],
+    } as never
+    expect(frameUrlsFromEdges(snap, 'v')).toEqual({ first: 'nomi-local://first.jpg', last: 'nomi-local://last.jpg' })
   })
 })
 
@@ -109,6 +131,14 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
     const canvas = await readProjectCanvas(createDiskGateway(project.id))
     expect(canvas.nodes).toHaveLength(2)
     expect(canvas.edges).toHaveLength(1)
+    const grouped = await groupProjectNodes(gateway, ids, '镜头组')
+    expect(grouped).toMatchObject({ created: true, group: { name: '镜头组', nodeIds: ids } })
+    const groupedAgain = await groupProjectNodes(gateway, [...ids].reverse(), '镜头组')
+    expect(groupedAgain.created).toBe(false)
+    expect(groupedAgain.group?.id).toBe(grouped.group?.id)
+    expect((await readProjectCanvas(createDiskGateway(project.id))).groups).toEqual([
+      expect.objectContaining({ id: grouped.group?.id, name: '镜头组', nodeIds: ids }),
+    ])
     const shot = canvas.nodes.find((node) => node.id === ids[1])
     expect(shot?.prompt).toBe('电影感写实，黄昏光线')
   })
@@ -215,6 +245,49 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
     expect(kind).toBe('text_to_image')
   })
 
+  it('多镜身份锁链：定妆图落卡 → freeze → character_ref 连镜 → 静帧生成不传 references 也能吃到定妆图并走 image_edit', async () => {
+    // 导演协议（SKILL.md lock-look 关口）的机制面：nomi_freeze_nodes 之后，character_ref 入边是
+    // 静帧参考图的**唯一来源**（generate 没传 input.references）——这条兜底断了，静帧就退回纯文生，
+    // 跨镜换脸就从这里进来。端到端钉死：出图落卡 → 冻结 → 连边 → 生成走 image_edit 带定妆图。
+    const project = createNamedProject('多镜身份锁链测试')
+    const gateway = createDiskGateway(project.id)
+
+    const { ids } = await addProjectNodes(gateway, [
+      { kind: 'character', title: '林夏 · 定妆', prompt: '齐肩黑发、左眉一颗痣，红色校服，正面平光定妆照' },
+      { kind: 'image', title: 'S01 首帧', prompt: '林夏倚护栏远望，黄昏逆光' },
+    ])
+    const [characterId, stillId] = ids!
+
+    // 定妆照出图，url 落回角色卡（freeze 谓词只认已出图的锚卡）。
+    await generateOnProject(
+      { projectId: project.id, nodeId: characterId, intent: 'image', prompt: '齐肩黑发、左眉一颗痣，红色校服定妆照', vendor: 'codex-local', modelKey: 'codex-imagegen' },
+      gateway,
+      async () => ({ id: 't-look', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://asset/p/linxia-look.png' }] }),
+    )
+
+    await connectProjectNodes(gateway, [{ source: characterId, target: stillId, mode: 'character_ref' }])
+    const freeze = await freezeProjectNodes(gateway, [characterId])
+    expect(freeze.frozen).toEqual([characterId])
+
+    const captured: Array<{ kind: string; referenceImages: unknown }> = []
+    const out = await generateOnProject(
+      { projectId: project.id, nodeId: stillId, intent: 'image', vendor: 'codex-local', modelKey: 'codex-imagegen' },
+      gateway,
+      async (payload) => {
+        const req = payload.request as { kind: string; extras: Record<string, unknown> }
+        captured.push({ kind: req.kind, referenceImages: req.extras.referenceImages })
+        return { id: 't-still', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://asset/p/s01-first.png' }] }
+      },
+    ) as { status?: string; advisories?: string[] }
+
+    expect(captured).toHaveLength(1)
+    expect(captured[0].kind).toBe('image_edit')
+    expect(captured[0].referenceImages).toEqual(['nomi-local://asset/p/linxia-look.png'])
+    expect(out.status).toBe('succeeded')
+    // 已冻结 → 不再弹「还没冻结定妆」提醒（提醒不拦，但冻结后应消失）。
+    expect((out.advisories || []).join('\n')).not.toContain('还没冻结定妆')
+  })
+
   // W1d：kind 按目录 derive——catalog 里模型声明了参考模式时，带参考生成用它选 kind（不硬编码 defaultKind）。
   // 落一份最小 catalog 到设置根（mockedUserDataRoot = getSettingsRoot），让 referenceModeForIntent 读得到。
   function seedCatalog(models: unknown[], mappings: unknown[]): void {
@@ -306,29 +379,85 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
     expect(kind).toBe('image_to_video')
   })
 
-  // 病根回归：轮询到点旧版只 break，result 保持 queued 且不带 error —— 调用方（MCP/agent/CLI）
-  // 拿到一个**永远非终态**的结果，等同「一直转圈但没人告诉你出了什么事」。到点必须落终态。
-  it('generate：轮询超时必须落 failed + 诚实原因，不能静默返回 queued', async () => {
+  // 轮询超时不等于 provider 失败：只要 taskId 已拿到，就必须落 recoverable，下一次只续查。
+  it('generate：轮询超时保存 taskId 并落 recoverable，不能静默 queued 或误判 failed', async () => {
     const project = createNamedProject('轮询超时测试')
+    const gateway = createDiskGateway(project.id)
     const previous = process.env.NOMI_POLL_TIMEOUT_MS
     process.env.NOMI_POLL_TIMEOUT_MS = '1'
     try {
       let polls = 0
-      const out = await generateOnProject(
+      await expect(generateOnProject(
         { projectId: project.id, intent: 'image', prompt: '一只猫', vendor: 'apimart', modelKey: 'seedream-4' },
-        createDiskGateway(project.id),
+        gateway,
         async () => ({ id: 'task-stuck', status: 'queued', assets: [] }),
         async () => {
           polls += 1
           return { result: { id: 'task-stuck', status: 'queued', assets: [] } }
         },
-      )
+      )).rejects.toThrow()
       expect(polls).toBeGreaterThan(0)
-      expect(out.status).toBe('failed')
+      const node = (await gateway.readDoc()).nodes[0]
+      expect(node.status).toBe('recoverable')
+      expect((node.runs as Array<{ taskId?: string }>)[0]?.taskId).toBe('task-stuck')
     } finally {
       if (previous === undefined) delete process.env.NOMI_POLL_TIMEOUT_MS
       else process.env.NOMI_POLL_TIMEOUT_MS = previous
     }
+  })
+
+  it('generate：查询断线后再次调用同节点只续查，不重新确认或提交', async () => {
+    const project = createNamedProject('断线续查测试')
+    const base = createDiskGateway(project.id)
+    let confirmCalls = 0
+    const gateway: ProjectGateway = {
+      ...base,
+      confirmSpend: async () => { confirmCalls += 1; return null },
+    }
+    const { ids } = await addProjectNodes(gateway, [{ kind: 'video', prompt: '一只小猪跳舞' }])
+    let submitCalls = 0
+    await expect(generateOnProject(
+      { projectId: project.id, nodeId: ids[0], intent: 'video', prompt: '一只小猪跳舞', vendor: 'apimart', modelKey: 'seedance' },
+      gateway,
+      async () => { submitCalls += 1; return { id: 'provider-task-1', status: 'queued', assets: [] } },
+      async () => { throw new TypeError('fetch failed') },
+    )).rejects.toThrow(/fetch failed/)
+    expect(submitCalls).toBe(1)
+    expect(confirmCalls).toBe(1)
+    expect((await gateway.readDoc()).nodes[0].status).toBe('recoverable')
+
+    const resumed = await generateOnProject(
+      { projectId: project.id, nodeId: ids[0], intent: 'video', prompt: '一只小猪跳舞', vendor: 'apimart', modelKey: 'seedance', resumeOnly: true },
+      gateway,
+      async () => { submitCalls += 1; throw new Error('不应再次提交') },
+      async ({ taskId }) => ({
+        result: { id: taskId, status: 'succeeded', assets: [{ type: 'video', url: 'nomi-local://recovered.mp4' }] },
+      }),
+    )
+    expect(resumed.status).toBe('succeeded')
+    expect(submitCalls).toBe(1)
+    expect(confirmCalls).toBe(1)
+    const recovered = (await gateway.readDoc()).nodes[0]
+    expect(recovered.status).toBe('success')
+    expect((recovered.result as { taskId?: string }).taskId).toBe('provider-task-1')
+    expect((recovered.runs as Array<{ status?: string }>)[0]?.status).toBe('success')
+  })
+
+  it('generate：resumeOnly 但节点没有 taskId 时拒绝，不确认、不提交', async () => {
+    const project = createNamedProject('无任务拒绝续查')
+    const base = createDiskGateway(project.id)
+    let confirmCalls = 0
+    let submitCalls = 0
+    const gateway: ProjectGateway = { ...base, confirmSpend: async () => { confirmCalls += 1; return null } }
+    const { ids } = await addProjectNodes(gateway, [{ kind: 'video', prompt: 'p' }])
+    await expect(generateOnProject(
+      { projectId: project.id, nodeId: ids[0], intent: 'video', prompt: 'p', vendor: 'apimart', modelKey: 'seedance', resumeOnly: true },
+      gateway,
+      async () => { submitCalls += 1; return { id: 'forbidden', status: 'queued', assets: [] } },
+      async () => ({ result: { id: 'forbidden', status: 'queued', assets: [] } }),
+    )).rejects.toThrow(/没有可续查/)
+    expect(confirmCalls).toBe(0)
+    expect(submitCalls).toBe(0)
   })
 
   it('未知项目抛清晰错误', async () => {

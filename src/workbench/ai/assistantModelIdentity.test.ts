@@ -64,6 +64,7 @@ describe('助手可选模型必须来自真实可用 catalog', () => {
     { key: 'apimart', enabled: true, authType: 'bearer' as const, hasApiKey: true },
     { key: 'kie', enabled: true, authType: 'bearer' as const, hasApiKey: false },
     { key: 'local', enabled: true, authType: 'none' as const, hasApiKey: false },
+    { key: 'codex-local', enabled: true, authType: 'none' as const, hasApiKey: false },
   ]
 
   it('只保留 text、启用、身份完整且供应商真实可用的目录行', () => {
@@ -75,11 +76,13 @@ describe('助手可选模型必须来自真实可用 catalog', () => {
       { vendorKey: 'apimart', modelKey: 'image-model', kind: 'image', enabled: true, labelZh: 'Image' },
       { vendorKey: '', modelKey: 'missing-vendor', kind: 'text', enabled: true, labelZh: 'Missing vendor' },
       { vendorKey: 'local', modelKey: 'local-text', kind: 'text', enabled: true, labelZh: 'Local text' },
+      { vendorKey: 'codex-local', modelKey: 'codex-chat', kind: 'text', enabled: true, labelZh: 'Codex 对话（登录额度）' },
     ], vendors)
 
     expect(models.map((model) => `${model.vendorKey}:${model.modelKey}`)).toEqual([
       'apimart:deepseek-v4-pro',
       'local:local-text',
+      'codex-local:codex-chat',
     ])
   })
 

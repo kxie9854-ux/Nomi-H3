@@ -1,5 +1,5 @@
 {
-  "debtCap": 84,
+  "debtCap": 83,
   "registered": [
     {
       "site": "electron/ai/antigravityProtocol.ts::type:AntigravityToolStep/property:state/type-union",
@@ -20,6 +20,11 @@
       "site": "electron/capabilityCore/generationRecoveryProjection.ts::type:GenerationRecoveryState/type-union",
       "members": ["cancel_requested", "cancelled", "submission_unknown"],
       "reason": "GenerationRecoveryState 是跨 ProductionJob/Run 状态生成恢复提示的输入投影：submission_unknown、cancel_requested、cancelled 分别驱动 reconcile、observe 或 create_new_attempt；它描述恢复决策面，不是持久化的 ProductionJobStatus。"
+    },
+    {
+      "site": "electron/capabilityCore/generationTaskState.ts::type:GenerationContinuationStatus/type-union",
+      "members": ["recoverable", "running"],
+      "reason": "GenerationContinuationStatus 是能力核把已有 provider taskId 写回画布时的窄合同：running 表示正在轮询，recoverable 表示任务仍可续查但本次等待已中断；它是 generationNodeStatusSchema 全集的可续查子集。"
     },
     {
       "site": "electron/capabilityCore/generationRuntimeAdapter.ts::type:GenerationProvider/property:cancel/property:status/type-union",
@@ -383,6 +388,16 @@
       "reason": "**镜级画面校验**独立生命周期（无撤销、与结构对账分开），见 shotVerifyStore 注释。"
     },
     {
+      "site": "src/workbench/generationCanvas/agent/directorStage.ts::variable:DIRECTOR_STAGES/as-const",
+      "members": ["brief", "confirm", "film", "render", "stills"],
+      "reason": "DIRECTOR_STAGES 是 Nomi-H3 导演主路径的产品阶段：brief 定需求、stills 出静帧、confirm 审核、render 出动态、film 成片；它由画布和时间轴事实派生，不是生成任务或导出进度的别名。"
+    },
+    {
+      "site": "src/workbench/generationCanvas/components/CodexDirectorPanel.tsx::type:HistoryStatus/type-union",
+      "members": ["error", "idle", "loading", "ready"],
+      "reason": "HistoryStatus 只描述 Codex 导演面板恢复项目会话的本地读取阶段：idle 尚未读、loading 正在读、ready 已投影、error 读取失败；它不写入任务账本，也不与媒体加载队列共用。"
+    },
+    {
       "site": "src/workbench/generationCanvas/components/viewportAnimationSettlement.ts::type:ViewportAnimationSettlementOutcome/type-union",
       "members": ["cancelled", "completed"],
       "reason": "**视口动画结算**结果，描述一次动画怎么收场，非任务。"
@@ -514,11 +529,6 @@
       "site": "electron/browser/core/browserViewTypes.ts::type:BrowserPromptScreenshotSelectionResult/property:reason/type-union",
       "members": ["cancelled", "error"],
       "reason": "浏览器截图选择结束原因合同 跨 IPC 重复写在多个实现层，目前没有 neutral shared contract，因此所有现有 copy 都列 debt。收敛动作：在构建中立模块导出 BROWSER_SCREENSHOT_SELECTION_REASONS as const tuple 和 runtime schema，再让 main、preload、renderer 的 DTO、校验、解析与分支全部 derive；任何一侧都不得导入另一侧实现目录。"
-    },
-    {
-      "site": "electron/capabilityCore/core.ts::variable:TERMINAL_STATUSES/set",
-      "members": ["failed", "succeeded"],
-      "reason": "TERMINAL_STATUSES 是 TaskStatus 的 failed、succeeded 终态子集；neutral TaskStatus 合同落地后由同一个 isTerminalTaskStatus helper 提供，core 不再维护独立 Set。"
     },
     {
       "site": "electron/capabilityCore/dispatcher.ts::type:DispatchContext/property:productionRuns/property:reviewArtifact/parameter:input/property:decision/type-union",

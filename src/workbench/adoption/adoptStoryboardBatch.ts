@@ -173,20 +173,22 @@ export async function adoptStoryboardBatch(options: AdoptStoryboardBatchOptions)
       skipped.push({ nodeId: unit.nodeId, reason: 'clip_unavailable' })
       continue
     }
-    const clip = await buildGenerationNodeTimelineClip(node, { fps: timeline.fps, startFrame: cursor })
+    // 画面追加到时间线末尾；BGM/导入音频从 0 帧起铺，不参与镜头串行游标。
+    const placementStartFrame = unit.role === 'audio' ? 0 : cursor
+    const clip = await buildGenerationNodeTimelineClip(node, { fps: timeline.fps, startFrame: placementStartFrame })
     options.assertCanApply?.()
     if (!clip) {
       skipped.push({ nodeId: unit.nodeId, reason: 'clip_unavailable' })
       continue
     }
     const trackType = getTrackTypeForClipType(clip.type)
-    placements.push({ clip, trackType, startFrame: cursor })
+    placements.push({ clip, trackType, startFrame: placementStartFrame })
     placedNodes.push({ nodeId: unit.nodeId, clipId: clip.id })
     placedItems.push({
       nodeId: unit.nodeId,
       clipId: clip.id,
       trackType,
-      startFrame: cursor,
+      startFrame: placementStartFrame,
       ...(unit.role ? { role: unit.role } : {}),
     })
     keyUnits.push({
@@ -207,7 +209,7 @@ export async function adoptStoryboardBatch(options: AdoptStoryboardBatchOptions)
         endFrame: clip.endFrame,
       })
     }
-    cursor = clip.startFrame + clip.frameCount
+    if (unit.role !== 'audio') cursor = clip.startFrame + clip.frameCount
   }
 
   if (placements.length === 0) return { status: 'nothing_to_adopt', skipped, total }

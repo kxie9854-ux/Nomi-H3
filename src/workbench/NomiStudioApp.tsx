@@ -734,7 +734,7 @@ export default function NomiStudioApp(): JSX.Element {
           generationAiLayout={generationAiCollapsed ? 'overlay' : 'sidebar'}
           generationAi={
             <React.Suspense fallback={null}>
-              <CanvasAssistantEntry defaultCollapsed />
+              <CanvasAssistantEntry defaultCollapsed={false} />
             </React.Suspense>
           }
           projectId={activeProject?.id ?? null}

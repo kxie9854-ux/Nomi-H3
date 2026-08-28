@@ -93,6 +93,8 @@ describe('capabilityCore/mcpConfig', () => {
     expect(JSON.parse(after.mcpServers.nomi.env.NOMI_MCP_APP_ARGS)).toEqual(['/fake/repo'])
     expect(after.mcpServers.nomi.env[MCP_CONFIG_VERSION_ENV]).toBe(MCP_CONFIG_VERSION)
     expect(after.mcpServers.nomi.env[MCP_CONFIG_KIND_ENV]).toBe('development')
+    expect(after.mcpServers.nomi.env.NOMI_PROJECTS_DIR).toBeTruthy()
+    expect(after.mcpServers.nomi.env.NOMI_SETTINGS_DIR).toBeTruthy()
     expect(after.mcpServers.nomi.env[MCP_CLIENT_ENV]).toBe('claude')
     expect(verifyMcpClient(
       after.mcpServers.nomi.env[MCP_CLIENT_ENV],
@@ -137,6 +139,8 @@ describe('capabilityCore/mcpConfig', () => {
     let text = fs.readFileSync(codexPath, 'utf8')
     expect(text).toContain('[mcp_servers.nomi]')
     expect(text).toContain('NOMI_MCP_STDIO = "1"')
+    expect(text).toContain('NOMI_PROJECTS_DIR')
+    expect(text).toContain('NOMI_SETTINGS_DIR')
     expect(text).toContain(`${MCP_CLIENT_ENV} = "codex"`)
     expect(text).toContain(`${MCP_CLIENT_PROOF_ENV} = "`)
     expect(text).toContain('[mcp_servers.other]') // 别人的块没被动

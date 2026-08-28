@@ -23,7 +23,12 @@ export type SpendConfirmInfo = {
   modelKey: string
   prompt: string
   /**
-   * 这次确认同时会换来「本会话该项目后续生成免问」（MCP 付费会话级信任，见 mcpSpendTrust.ts）。
+   * 这次付费的项目 + 模型服务作用域。作为不透明键跨到渲染层，用于消费 Codex 面板刚刚取得的
+   * 一次性兼容桥授权；不是模型入参，也不能替代 node-bound spend grant。
+   */
+  approvalScope?: string
+  /**
+   * 这次确认同时会换来「本会话该项目同一模型服务后续生成免问」（见 mcpSpendTrust.ts）。
    * 卡上必须据它多写一句授权范围——用户以为批的是「这一张」，不写明就是骗同意（D4）。
    */
   grantsSessionTrust?: boolean

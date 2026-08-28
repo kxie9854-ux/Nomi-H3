@@ -22,6 +22,8 @@ import {
   verifyMcpClient,
   type AuthenticatedMcpClient,
 } from './security'
+import { getProjectsRoot, PROJECT_ROOT_ENV } from '../runtimePaths'
+import { getSettingsRoot, SETTINGS_ROOT_ENV } from '../settings/settingsRoot'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
 
 const SERVER_NAME = 'nomi'
@@ -131,6 +133,11 @@ export function mcpServerEntry(client?: McpClientKey): McpServerEntry {
     NOMI_MCP_STDIO: '1',
     [MCP_CONFIG_VERSION_ENV]: MCP_CONFIG_VERSION,
     [MCP_CONFIG_KIND_ENV]: launcher.kind,
+    // Codex/Claude spawn MCP with this env block, not the GUI process env.
+    // Without the live library root the launcher looks at instance.json and
+    // reports "Nomi 冷启动未就绪" while the Nomi-H3 window is already open.
+    [PROJECT_ROOT_ENV]: getProjectsRoot(),
+    [SETTINGS_ROOT_ENV]: getSettingsRoot(),
   }
   const proof = client ? signMcpClient(client) : null
   if (client && proof) {

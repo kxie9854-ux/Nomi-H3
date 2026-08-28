@@ -19,6 +19,7 @@ import type { GenerationCanvasNode, TiptapDocJson } from '../../model/generation
 import { useGenerationCanvasStore } from '../../store/generationCanvasStore'
 import { useNomiRichTextEditor } from '../../../common/useNomiRichTextEditor'
 import { buildRichTextActions } from '../../../common/richTextActions'
+import { plainTextToTiptapDoc } from '../../../../../electron/capabilityCore/plainTextDoc'
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [] }
 type Props = {
@@ -40,7 +41,16 @@ function TextDocumentNodeImpl({ node }: Props): JSX.Element {
   const updateNode = useGenerationCanvasStore((state) => state.updateNode)
   const commitPersistedChange = useGenerationCanvasStore((state) => state.commitPersistedChange)
 
-  const content = React.useMemo<JSONContent>(() => (node.contentJson ?? EMPTY_DOC) as JSONContent, [node.contentJson])
+  const content = React.useMemo<JSONContent>(() => {
+    if (!isDocEmpty(node.contentJson)) return node.contentJson as JSONContent
+    if (node.prompt?.trim()) return plainTextToTiptapDoc(node.prompt) as JSONContent
+    return EMPTY_DOC
+  }, [node.contentJson, node.prompt])
+
+  React.useEffect(() => {
+    if (!isDocEmpty(node.contentJson) || !node.prompt?.trim()) return
+    updateNode(node.id, { contentJson: plainTextToTiptapDoc(node.prompt) as unknown as TiptapDocJson })
+  }, [node.contentJson, node.id, node.prompt, updateNode])
 
   const handleChange = React.useCallback(
     (json: JSONContent) => {

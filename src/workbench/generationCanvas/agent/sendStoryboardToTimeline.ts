@@ -1,6 +1,6 @@
 import { useWorkbenchStore } from '../../workbenchStore'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
-import { planStoryboardTimeline, type StoryboardTimelineUnitRole } from './storyboardTimelinePlan'
+import { planImportedAudio, planStoryboardTimeline, type StoryboardTimelineUnitRole } from './storyboardTimelinePlan'
 import { adoptStoryboardBatch, timelineEndFrame } from '../../adoption/adoptStoryboardBatch'
 import type { BatchAdoptionResult } from '../../adoption/adoptStoryboardBatch'
 
@@ -80,13 +80,15 @@ export async function arrangeStoryboardToTimeline(
   options.assertCanApply?.()
   const canvasState = useGenerationCanvasStore.getState()
   const { units, skipped } = planStoryboardTimeline(canvasState.nodes, canvasState.edges, options.nodeIds)
+  const audioUnits = planImportedAudio(canvasState.nodes, options.nodeIds)
+  const allUnits = [...units, ...audioUnits]
   const startFrame = timelineEndFrame(useWorkbenchStore.getState().timeline)
   const outcome = await adoptStoryboardBatch({
-    units,
+    units: allUnits,
     skipped,
     startFrame,
     readNodes: () => useGenerationCanvasStore.getState().nodes,
     assertCanApply: options.assertCanApply,
   })
-  return toResult(outcome, units.length)
+  return toResult(outcome, allUnits.length)
 }

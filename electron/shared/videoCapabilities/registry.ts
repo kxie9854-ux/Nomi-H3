@@ -17,6 +17,7 @@ import { KLING_3_ARCHETYPE } from "./kling";
 import { KLING_3_TURBO_ARCHETYPE } from "./kling30Turbo";
 import { MINIMAX_H3_ARCHETYPE } from "./minimaxH3";
 import { MINIMAX_H3_APIMART_ARCHETYPE } from "./minimaxH3Apimart";
+import { MINIMAX_H3_AUTODL_ART_ARCHETYPE } from "./minimaxH3AutodlArt";
 import { MINIMAX_H3_REGENERATION_ARCHETYPE } from "./minimaxH3Regeneration";
 import { OMNI_FLASH_EXT_ARCHETYPE } from "./omniFlashExt";
 import { RUNNINGHUB_SEEDANCE_ARCHETYPE } from "./runninghubSeedance";
@@ -68,6 +69,7 @@ const SOURCE_BACKED_PROFILES: readonly ModelArchetype[] = [
   SEEDANCE_2_APIMART_ARCHETYPE,
   SEEDANCE_2_5_APIMART_ARCHETYPE,
   MINIMAX_H3_APIMART_ARCHETYPE,
+  MINIMAX_H3_AUTODL_ART_ARCHETYPE,
   WAN_2_7_ARCHETYPE,
   WAN_3_0_ARCHETYPE,
   WAN_3_0_APIMART_ARCHETYPE,

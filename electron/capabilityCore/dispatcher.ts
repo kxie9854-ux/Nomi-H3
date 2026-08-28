@@ -5,7 +5,9 @@ import {
   connectProjectNodes,
   createNamedProject,
   deleteProjectNodes,
+  freezeProjectNodes,
   generateOnProject,
+  groupProjectNodes,
   importProjectAsset,
   listAllProjects,
   listAvailableModels,
@@ -117,6 +119,17 @@ export type DispatchContext = {
    * 领域策略住 shotVerifyOrchestrate，传输层只注入 deps，core 只透传 outcome（三层干净，方案 §3/§9）。
    */
   makeVerifyDeps?: MakeVerifyDeps
+  /**
+   * 把已生成镜头排上时间轴。只在 Nomi 窗口打开且该项目在前台时注入（时间轴活在渲染层 store）。
+   * 不注入 → 明确拒绝，避免 headless 静默写一份会被打开项目覆盖的盘上时间轴。
+   */
+  arrangeTimeline?: (input: { projectId: string; nodeIds?: string[] }) => Promise<unknown>
+  /**
+   * 把当前时间轴导出为 MP4。同样只在前台打开的项目上注入（ffmpeg 导出读渲染层时间轴）。
+   */
+  exportTimeline?: (input: { projectId: string; outputName?: string }) => Promise<unknown>
+  /** 把导演 overlay SKILL.md 写进 userData。Codex「创建技能」模式用。 */
+  saveDirectorSkill?: (input: { markdown: string; fileName?: string }) => Promise<unknown>
 }
 
 const PRODUCTION_START_FIELDS = new Set([
@@ -400,6 +413,20 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
     }
     case 'canvas.connect':
       return connectProjectNodes(ctx.makeGateway(projectIdOf(params)), Array.isArray(params.connections) ? (params.connections as never[]) : [])
+    case 'canvas.groupNodes': {
+      assertOnlyFields(params, new Set(['projectId', 'nodeIds', 'name']))
+      const name = optionalText(params.name, 'group name', 120)
+      if (!name) throw new RpcError('Invalid group name', 400)
+      const nodeIds = stringList(params.nodeIds, 'nodeIds', 200) || []
+      if (nodeIds.length < 2) throw new RpcError('A group needs at least 2 node ids', 400)
+      return groupProjectNodes(ctx.makeGateway(projectIdOf(params)), nodeIds, name)
+    }
+    case 'canvas.freezeNodes': {
+      assertOnlyFields(params, new Set(['projectId', 'nodeIds']))
+      const nodeIds = stringList(params.nodeIds, 'nodeIds', 50) || []
+      if (!nodeIds.length) throw new RpcError('需要至少一个要冻结的节点 id', 400)
+      return freezeProjectNodes(ctx.makeGateway(projectIdOf(params)), nodeIds)
+    }
     case 'canvas.setPrompt':
       return setProjectNodePrompt(
         ctx.makeGateway(projectIdOf(params)),
@@ -433,6 +460,30 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
         ctx.runTask,
         ctx.fetchTaskResult,
       )
+    case 'timeline.assemble': {
+      assertOnlyFields(params, new Set(['projectId', 'nodeIds']))
+      const projectId = requiredIdentifier(params.projectId, 'project')
+      const nodeIds = Array.isArray(params.nodeIds)
+        ? params.nodeIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0).map((id) => id.trim())
+        : undefined
+      if (!ctx.arrangeTimeline) throw new RpcError('请在 Nomi 里打开这个项目后再排成片', 409)
+      return ctx.arrangeTimeline({ projectId, ...(nodeIds && nodeIds.length ? { nodeIds } : {}) })
+    }
+    case 'timeline.export': {
+      assertOnlyFields(params, new Set(['projectId', 'outputName']))
+      const projectId = requiredIdentifier(params.projectId, 'project')
+      const outputName = optionalText(params.outputName, 'outputName', 200)
+      if (!ctx.exportTimeline) throw new RpcError('请在 Nomi 里打开这个项目后再导出成片', 409)
+      return ctx.exportTimeline({ projectId, ...(outputName ? { outputName } : {}) })
+    }
+    case 'director.saveSkill': {
+      assertOnlyFields(params, new Set(['markdown', 'fileName']))
+      const markdown = typeof params.markdown === 'string' ? params.markdown : ''
+      if (!markdown.trim()) throw new RpcError('SKILL.md 是空的', 400)
+      const fileName = optionalText(params.fileName, 'fileName', 200)
+      if (!ctx.saveDirectorSkill) throw new RpcError('无法保存导演技能', 409)
+      return ctx.saveDirectorSkill({ markdown, ...(fileName ? { fileName } : {}) })
+    }
     default:
       throw new RpcError(`未知方法: ${method}`, 404)
   }

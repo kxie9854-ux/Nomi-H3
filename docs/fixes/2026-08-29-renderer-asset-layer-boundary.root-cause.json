@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "2026-08-29-renderer-asset-layer-boundary",
+  "problem_type": "renderer importing main-process asset transport implementation",
+  "symptom": "The Vite-backed Electron window showed the main-interface error boundary because the renderer transitively loaded @xmldom/xmldom from the main-process upload implementation.",
+  "direct_cause": "catalogTaskActions imported the small collectLocalAssetUrls traversal from assetLocalization, pulling that module's Node buffers, upload policy, and CommonJS XML parser into the renderer module graph.",
+  "class_root": "A shared pure value-classification operation lived behind a process-specific transport owner, so a renderer consumer crossed the Electron process boundary to reuse it.",
+  "affected_population": [
+    "Developers running Nomi through the Vite Electron development entry",
+    "Electron walkthroughs that validate the same development renderer",
+    "Renderer generation tasks that collect local asset references"
+  ],
+  "scope_paths": [
+    "electron/catalog/assetValueScheme.ts",
+    "electron/catalog/assetLocalization.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskActions.ts"
+  ],
+  "entry_points": [
+    "Vite renderer module graph for the studio route",
+    "catalog task preparation before generation"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/xmldom/xmldom",
+      "checked_at": "2026-08-29",
+      "purpose": "Confirm @xmldom/xmldom is a Node-oriented XML DOM implementation whose documented runtime usage is not needed by the renderer's pure asset-value traversal."
+    }
+  ],
+  "invariants": [
+    "Renderer code imports asset-value classification from the dependency-free assetValueScheme module and never from the upload/XML transport implementation.",
+    "collectLocalAssetUrls keeps one implementation and remains re-exported for existing main-process callers.",
+    "Vite-backed Electron reaches the project library without a pageerror from @xmldom/xmldom."
+  ],
+  "regression_tests": [
+    "electron/catalog/assetValueScheme.test.ts",
+    "tests/ux/codex-chat-brain.walk.mjs",
+    "tests/ux/director-skill-picker.walk.mjs"
+  ],
+  "migration": "No persisted-data migration. Only module ownership changes; asset detection and request payloads are unchanged.",
+  "residual_risks": [
+    "Other renderer imports of main-process modules remain governed by the existing architecture gates and should be split at their pure boundary when found."
+  ]
+}

@@ -29,9 +29,10 @@ import { validateToolArguments } from './mcpArgValidation'
 import { handleSemanticGenerationGate } from './mcpSemanticGenerationFlow'
 import { createPlanTrustStore, planConfirmElicit } from './mcpPlanTrust'
 import { isAnchorCheckpointGate } from '../productionRun/anchorCheckpoint'
-import { createSpendTrustStore, spendConfirmElicit } from './mcpSpendTrust'
+import { createSpendTrustScope, createSpendTrustStore, spendConfirmRequest } from './mcpSpendTrust'
 import { buildIntakeMessage, buildIntakeQuestions, buildIntakeSchema, resolveIntake, summarizeIntake } from './mcpBriefIntake'
 import type { AuthenticatedMcpClient } from './security'
+import { buildBooleanElicitationParams, type BooleanElicitationInput } from './mcpElicitation'
 
 export type McpInvokeOptions = { spendConfirmed?: boolean; planConfirmed?: boolean; signal?: AbortSignal }
 export const MCP_REQUEST_SIGNAL = Symbol('nomi.mcp.request-signal')
@@ -139,7 +140,7 @@ export function createMcpProtocol(transport: McpTransport) {
   const spendTrust = createSpendTrustStore()
   // 在飞请求账本：取消（notifications/cancelled）与 stdio 断连都挂在它上面（见 mcpRequestRegistry.ts）。
   const requests = createMcpRequestRegistry()
-  // 付费确认的并发绑定（按 projectId）：两个首次付费请求同时进来时，第二个排队等第一个的确认结果，
+  // 付费确认的并发绑定（按项目 + 模型服务 scope）：两个首次付费请求同时进来时，第二个排队等第一个的确认结果，
   // 而不是各弹各的卡。与生成门共用同一份并发语义（mcpConfirmationBinding.ts，P1 不造第二套）。
   const spendConfirmBinding = createConfirmationBinding<{ supported: boolean; confirmed?: boolean }>({
     isConfirmed: (result) => result.confirmed === true,
@@ -233,23 +234,10 @@ export function createMcpProtocol(transport: McpTransport) {
     })
   }
 
-  async function elicitBooleanConfirm(input: {
-    message: string
-    title: string
-    description: string
-  }, signal?: AbortSignal): Promise<{ supported: boolean; confirmed?: boolean; action?: 'accept' | 'decline' | 'cancel' | 'timeout'; attestation?: unknown }> {
+  async function elicitBooleanConfirm(input: BooleanElicitationInput, signal?: AbortSignal): Promise<{ supported: boolean; confirmed?: boolean; action?: 'accept' | 'decline' | 'cancel' | 'timeout'; attestation?: unknown }> {
     if (!clientSupportsElicitation) return { supported: false }
     try {
-      const res = (await sendServerRequest('elicitation/create', {
-        message: input.message,
-        requestedSchema: {
-          type: 'object',
-          properties: {
-            confirm: { type: 'boolean', title: input.title, description: input.description },
-          },
-          required: ['confirm'],
-        },
-      }, 300000, signal)) as { action?: string; content?: { confirm?: boolean; attestation?: unknown; confirmationAttestation?: unknown } } | null
+      const res = (await sendServerRequest('elicitation/create', buildBooleanElicitationParams(input), 300000, signal)) as { action?: string; content?: { confirm?: boolean; attestation?: unknown; confirmationAttestation?: unknown } } | null
       // 三态：accept / decline / cancel。只有明确 accept + confirm=true 才能跨过服务端边界。
       const confirmed = res?.action === 'accept' && res?.content?.confirm === true
       return {
@@ -569,23 +557,31 @@ export function createMcpProtocol(transport: McpTransport) {
         // elicitSpendConfirm 在客户端没声明 elicitation 时返回 supported:false，故它就是①/②的唯一判据
         // （不另读 clientSupportsElicitation，免两处能力判断漂移）。enforcement 仍在主进程硬闸。
         if (tool.name === 'nomi_generate') {
+          // 恢复已有 provider task 是只读查询，不花新额度。能力核会再次硬校验 taskId：没有可续查任务就拒绝，
+          // 绝不因这个 flag 回退成新提交。必须在 spend gate 前分流，否则「恢复」仍会无意义地问一次钱。
+          if (built.resumeOnly === true) {
+            const result = await transport.invoke(tool.method, built)
+            reply(id, buildToolResultPayload(tool.name, args, result))
+            return
+          }
           const spendProjectId = typeof built.projectId === 'string' ? built.projectId : ''
+          const spendScope = createSpendTrustScope(spendProjectId, built.vendor, built.modelKey)
           // 会话级信任命中 → 这次不问（治「反复确认」，见 mcpSpendTrust.ts）。硬闸不受影响：
           // 下游照旧逐次铸 node-bound 令牌、assertAndConsumeSpendGrant 逐次校验。
-          if (spendTrust.isTrusted(spendProjectId)) {
-            spendTrust.countPass(spendProjectId)
+          if (spendTrust.isTrusted(spendScope)) {
+            spendTrust.countPass(spendScope)
             const result = await invokeForRequest(tool.method, built, { spendConfirmed: true })
             reply(id, buildToolResultPayload(tool.name, args, result))
             return
           }
-          const reask = spendTrust.hasApprovedBefore(spendProjectId)
-          // 并发绑定（按 projectId）：两个首次付费请求同时到这里时，只有第一个真弹确认，第二个排队等
+          const reask = spendTrust.hasApprovedBefore(spendScope)
+          // 并发绑定（按项目 + 模型服务 scope）：两个首次付费请求同时到这里时，只有第一个真弹确认，第二个排队等
           // 同一个结果——旧行为是两个都发现 isTrusted=false 于是各弹各的、各自放行（重复扣费风险）。
           // 排队者复用的是**确认结果**不是**授权令牌**：它仍逐笔经主进程 assertAndConsumeSpendGrant
           // 铸/校验自己的令牌，硬闸一步没少（见 mcpConfirmationBinding.ts 的边界注释）。
           const confirm = await spendConfirmBinding.run(
-            spendProjectId,
-            () => elicitBooleanConfirm(spendConfirmElicit(describeSpend(args), reask), requestSignal),
+            spendScope,
+            () => elicitBooleanConfirm(spendConfirmRequest(describeSpend(args), reask, spendScope), requestSignal),
           )
           if (confirm.supported) {
             if (!confirm.confirmed) {
@@ -595,14 +591,14 @@ export function createMcpProtocol(transport: McpTransport) {
             try {
               const result = await invokeForRequest(tool.method, built, { spendConfirmed: true })
               // 只在真跑成功后记信任：invoke 抛错（无令牌/供应商失败）不该换来一段免问期。
-              spendTrust.trust(spendProjectId)
+              spendTrust.trust(spendScope)
               reply(id, buildToolResultPayload(tool.name, args, result))
               return
             } finally {
               // 无论成败都摘掉确认绑定：成功 → 后续走 spendTrust 快路；失败 → 下次重新问真人，
               // 别让一颗「已确认但没跑成」的 promise 永久挂在这个 projectId 上（那会让后续请求
               // 复用一次早已过期的确认 = 没问就花钱）。
-              spendConfirmBinding.release(spendProjectId)
+              spendConfirmBinding.release(spendScope)
             }
           }
           if (!transport.isAppOpen()) {
@@ -624,7 +620,7 @@ export function createMcpProtocol(transport: McpTransport) {
           // 故这里的并发保护交给下游硬闸：每个请求各自铸/校验自己的令牌，真人点几张卡就放行几笔——
           // 不会出现「一次确认放行两笔」，最坏情况只是用户看见两张卡（诚实，且每张都要单独点）。
           const cardResult = await invokeForRequest(tool.method, built)
-          spendTrust.trust(spendProjectId)
+          spendTrust.trust(spendScope)
           reply(id, buildToolResultPayload(tool.name, args, cardResult))
           return
         }
