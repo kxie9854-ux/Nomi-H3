@@ -9,6 +9,12 @@
 
 ## 0. 2026-08-24 最新完成
 
+### 2026-08-27 增量（bug 修复两笔）
+
+- **中文名 skill 导入修复**：`importDirectorSkillMarkdown` 此前只取 frontmatter 名或文件名**一个**候选去清洗 id，frontmatter 写中文名（如 `name: 夜市`）时洗不出 ASCII id 直接报「技能名不合法」，即使文件名合法。现在逐候选回退（frontmatter → 文件名 → 内容哈希 `skill-<hash8>` 兜底），同内容重导同 id 幂等覆盖。
+- **围栏 tool-call 解析修复**（`codexChatPrompt.ts`）：① `arguments` 被模型写成 JSON 字符串（常见输出）时不再静默丢成 `{}`；② 剥离与解析改用同一判据——没变成 tool-call 的围栏（坏 JSON / 未声明工具名）留在正文里可见，不再被静默吞掉；③ 纯聊天（未声明工具）时模型冒出的围栏不再变成对不存在工具的 tool-call（AI SDK 会拒），空集判据统一。
+- ~~遗留待查~~ **collectAgentText 已修（快照按 id）**：`item.text` 视为该 item 的快照而非增量；按 `item.id` 分组（无 id 则每条独立），同 id 优先 `item.completed`，否则取最后一次 `item.updated`/无 type，按首次出现顺序把不同 agent_message 用换行拼接。
+
 ### 2026-08-26 增量（四计划收尾：文本大脑 / Skill 点选 / 多镜定妆 / 首配引导）
 
 - **Codex 文本大脑**：catalog 种出 `codex-chat`（kind=text、无 mapping、authType=none），`vendorLanguageModel` 对它走 `electron/ai/codexChatLanguageModel.ts`——`codex exec --json --ephemeral` 封装成 AI SDK LanguageModelV1，tool schema 用 `<<<NOMI_TOOL` 围栏进 prompt、回包解析成 tool-call；不开 `--enable image_generation`。助手下拉出现「Codex 对话（登录额度）」，接入卡文案改「对话 + 出图」。隔离真机走查 `tests/ux/codex-chat-brain.walk.mjs` 9/9 过（含 catalog 落盘断言），截图 `tests/ux/shots/codex-chat-card.png` / `codex-chat-picker.png`。

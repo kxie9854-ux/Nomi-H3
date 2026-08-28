@@ -67,6 +67,29 @@ describe("Codex chat prompt", () => {
     expect(stripCodexChatToolFences(text)).toBe("先看一眼画布");
   });
 
+  it("arguments 写成 JSON 字符串也能解析，不再静默丢成 {}", () => {
+    const text = `${NOMI_TOOL_OPEN}\n{"name":"read_canvas_state","arguments":"{\\"q\\":\\"x\\"}"}\n${NOMI_TOOL_CLOSE}`;
+    expect(parseCodexChatToolCalls(text)).toEqual([
+      { toolName: "read_canvas_state", args: { q: "x" }, argsText: JSON.stringify({ q: "x" }) },
+    ]);
+  });
+
+  it("没变成 tool-call 的围栏留在正文里（损失可见），成功的照剥", () => {
+    const allowed = new Set(["read_canvas_state"]);
+    const text = [
+      "开头",
+      `${NOMI_TOOL_OPEN}\nnot json\n${NOMI_TOOL_CLOSE}`,
+      `${NOMI_TOOL_OPEN}\n{"name":"undeclared_tool","arguments":{}}\n${NOMI_TOOL_CLOSE}`,
+      `${NOMI_TOOL_OPEN}\n{"name":"read_canvas_state","arguments":{"q":"x"}}\n${NOMI_TOOL_CLOSE}`,
+      "结尾",
+    ].join("\n");
+    const stripped = stripCodexChatToolFences(text, allowed);
+    expect(stripped).toContain("not json");
+    expect(stripped).toContain("undeclared_tool");
+    expect(stripped).not.toContain("read_canvas_state");
+    expect(parseCodexChatToolCalls(text, allowed)).toHaveLength(1);
+  });
+
   it("从 exec --json 的 item.completed 抽出 agent_message", () => {
     expect(extractCodexAgentMessageFromLine(jsonlMessage("OK").trim())).toBe("OK");
     expect(extractCodexAgentMessageFromLine('{"type":"turn.started"}')).toBe("");
@@ -118,6 +141,67 @@ describe("Codex chat language model", () => {
       expect.objectContaining({ type: "tool-call", toolName: "read_canvas_state" }),
       expect.objectContaining({ type: "finish", finishReason: "tool-calls" }),
     ]));
+  });
+
+  it("item.text 是按 id 的快照：updated+completed 不拼接重复草稿", async () => {
+    const stdout = [
+      '{"type":"item.updated","item":{"id":"item_1","type":"agent_message","text":"Hello"}}',
+      '{"type":"item.updated","item":{"id":"item_1","type":"agent_message","text":"Hello world"}}',
+      '{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Hello world"}}',
+    ].join("\n");
+    const model = createCodexChatLanguageModel("codex-chat", async () => ({
+      stdout,
+      stderr: "",
+      exitCode: 0,
+      lastMessage: "ignored",
+    }));
+    const result = await generateText({ model, prompt: "hi", maxRetries: 0 });
+    expect(result.text).toBe("Hello world");
+  });
+
+  it("两个不同 id 的 agent_message 按首次出现顺序用换行拼接", async () => {
+    const stdout = [
+      '{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"First"}}',
+      '{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"Second"}}',
+    ].join("\n");
+    const model = createCodexChatLanguageModel("codex-chat", async () => ({
+      stdout,
+      stderr: "",
+      exitCode: 0,
+      lastMessage: "ignored",
+    }));
+    const result = await generateText({ model, prompt: "hi", maxRetries: 0 });
+    expect(result.text).toBe("First\nSecond");
+  });
+
+  it("没有 completed 时取该 id 最后一次 updated 快照", async () => {
+    const stdout = [
+      '{"type":"item.updated","item":{"id":"item_1","type":"agent_message","text":"Hel"}}',
+      '{"type":"item.updated","item":{"id":"item_1","type":"agent_message","text":"Hello"}}',
+    ].join("\n");
+    const model = createCodexChatLanguageModel("codex-chat", async () => ({
+      stdout,
+      stderr: "",
+      exitCode: 0,
+      lastMessage: "ignored",
+    }));
+    const result = await generateText({ model, prompt: "hi", maxRetries: 0 });
+    expect(result.text).toBe("Hello");
+  });
+
+  it("没有 agent_message 时回落到 lastMessage", async () => {
+    const stdout = [
+      '{"type":"turn.started"}',
+      '{"type":"item.completed","item":{"id":"item_x","type":"reasoning","text":"thinking"}}',
+    ].join("\n");
+    const model = createCodexChatLanguageModel("codex-chat", async () => ({
+      stdout,
+      stderr: "",
+      exitCode: 0,
+      lastMessage: "fallback body",
+    }));
+    const result = await generateText({ model, prompt: "hi", maxRetries: 0 });
+    expect(result.text).toBe("fallback body");
   });
 });
 

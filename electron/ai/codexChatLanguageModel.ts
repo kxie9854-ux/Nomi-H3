@@ -15,7 +15,7 @@ import {
   resolveCodexBin,
 } from "../catalog/codexCli";
 import {
-  extractCodexAgentMessageFromLine,
+  extractCodexAgentMessageSnapshotFromLine,
   extractCodexTurnErrorFromLine,
   flattenCodexChatPrompt,
   parseCodexChatToolCalls,
@@ -64,11 +64,27 @@ function describeCodexChatFailure(result: CodexChatRunResult, turnError: string)
 }
 
 function collectAgentText(stdout: string, lastMessage: string): string {
-  const messages: string[] = [];
+  const order: string[] = [];
+  const byKey = new Map<string, { text: string; completed: boolean }>();
+  let anonSeq = 0;
   for (const line of stdout.split(/\r?\n/)) {
-    const text = extractCodexAgentMessageFromLine(line);
-    if (text) messages.push(text);
+    const snapshot = extractCodexAgentMessageSnapshotFromLine(line);
+    if (!snapshot) continue;
+    const key = snapshot.itemId ?? `__anon:${anonSeq++}`;
+    const prev = byKey.get(key);
+    if (!prev) {
+      order.push(key);
+      byKey.set(key, { text: snapshot.text, completed: snapshot.completed });
+      continue;
+    }
+    // Prefer completed; otherwise keep the last updated/untyped snapshot.
+    if (prev.completed && !snapshot.completed) continue;
+    prev.text = snapshot.text;
+    prev.completed = prev.completed || snapshot.completed;
   }
+  const messages = order
+    .map((key) => byKey.get(key)?.text ?? "")
+    .filter(Boolean);
   return (messages.join("\n") || lastMessage).trim();
 }
 
@@ -80,8 +96,10 @@ function collectTurnError(stdout: string, stderr: string): string {
   return "";
 }
 
-function allowedToolNames(options: LanguageModelV1CallOptions): Set<string> | undefined {
-  if (options.mode.type !== "regular" || !options.mode.tools) return undefined;
+/** 没声明工具时回空集（而非 undefined）：围栏只有点名了已声明的工具才算数——纯聊天里模型
+ * 冒出来的围栏既不该变成 tool-call（工具不存在，AI SDK 会拒），也不该被静默剥掉。 */
+function allowedToolNames(options: LanguageModelV1CallOptions): Set<string> {
+  if (options.mode.type !== "regular" || !options.mode.tools) return new Set();
   return new Set(
     options.mode.tools
       .filter((tool) => tool.type === "function")
@@ -91,9 +109,9 @@ function allowedToolNames(options: LanguageModelV1CallOptions): Set<string> | un
 
 function toToolCalls(
   text: string,
-  options: LanguageModelV1CallOptions,
+  allowedNames: ReadonlySet<string>,
 ): CodexChatToolCall[] {
-  return parseCodexChatToolCalls(text, allowedToolNames(options)).map((call, index) => ({
+  return parseCodexChatToolCalls(text, allowedNames).map((call, index) => ({
     toolCallType: "function" as const,
     toolCallId: `codex-chat-${index + 1}`,
     toolName: call.toolName,
@@ -214,9 +232,10 @@ function completionFromRun(
   const raw = collectAgentText(result.stdout, result.lastMessage);
   const turnError = collectTurnError(result.stdout, result.stderr);
   if (!raw) throw new Error(describeCodexChatFailure(result, turnError));
-  const toolCalls = toToolCalls(raw, options);
+  const allowed = allowedToolNames(options);
+  const toolCalls = toToolCalls(raw, allowed);
   return {
-    text: stripCodexChatToolFences(raw),
+    text: stripCodexChatToolFences(raw, allowed),
     toolCalls,
     finishReason: toolCalls.length > 0 ? "tool-calls" : "stop",
   };

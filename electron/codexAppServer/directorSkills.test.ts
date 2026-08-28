@@ -77,6 +77,26 @@ describe("list/resolve/import director skills", () => {
     expect(refs).toEqual([{ name: "night-market", path: expect.stringContaining(`${path.sep}night-market${path.sep}SKILL.md`) }]);
   });
 
+  it("中文名 frontmatter 洗不出 id 时回退文件名，不再整个拒绝导入", () => {
+    const settingsRoot = tempRoot();
+    const imported = importDirectorSkillMarkdown(
+      settingsRoot,
+      "---\nname: 夜市灯火\ndescription: 夜市。\n---\n\n# 夜市\n",
+      "night-market.md",
+    );
+    expect(imported.id).toBe("night-market");
+    expect(imported.label).toBe("夜市灯火");
+  });
+
+  it("中文名 + 中文文件名都洗不出时用内容哈希兜底，同内容重导同 id", () => {
+    const settingsRoot = tempRoot();
+    const markdown = "---\nname: 夜市灯火\n---\n\n# 夜市\n";
+    const first = importDirectorSkillMarkdown(settingsRoot, markdown, "夜市.md");
+    const second = importDirectorSkillMarkdown(settingsRoot, markdown, "夜市.md");
+    expect(first.id).toMatch(/^skill-[0-9a-f]{8}$/);
+    expect(second.id).toBe(first.id);
+  });
+
   it("resolveTurnSkills attaches nothing / author / spine+overlays", () => {
     expect(resolveTurnSkills(appPath, undefined, "none", ["director-guzhuang"])).toEqual([]);
     const author = resolveTurnSkills(appPath, undefined, "author", ["director-guzhuang"]);

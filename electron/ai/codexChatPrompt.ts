@@ -130,43 +130,81 @@ export function flattenCodexChatPrompt(options: LanguageModelV1CallOptions): Fla
   };
 }
 
+/** 模型把 arguments 写成 JSON 字符串是常见输出；只认 record 会把参数静默丢成 {}。 */
+function coerceToolArguments(value: unknown): Record<string, unknown> {
+  if (isRecord(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (isRecord(parsed)) return parsed;
+    } catch {
+      /* fall through */
+    }
+  }
+  return {};
+}
+
+function parseToolFence(raw: string, allowedNames?: ReadonlySet<string>): ParsedCodexToolCall | null {
+  const body = raw.trim();
+  if (!body) return null;
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (!isRecord(parsed) || typeof parsed.name !== "string" || !parsed.name.trim()) return null;
+    const toolName = parsed.name.trim();
+    if (allowedNames && !allowedNames.has(toolName)) return null;
+    const args = coerceToolArguments(parsed.arguments);
+    return { toolName, args, argsText: JSON.stringify(args) };
+  } catch {
+    return null;
+  }
+}
+
 export function parseCodexChatToolCalls(text: string, allowedNames?: ReadonlySet<string>): ParsedCodexToolCall[] {
   const out: ParsedCodexToolCall[] = [];
   for (const match of text.matchAll(FENCE_RE)) {
-    const raw = (match[1] || "").trim();
-    if (!raw) continue;
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (!isRecord(parsed) || typeof parsed.name !== "string" || !parsed.name.trim()) continue;
-      const toolName = parsed.name.trim();
-      if (allowedNames && !allowedNames.has(toolName)) continue;
-      const args = isRecord(parsed.arguments) ? parsed.arguments : {};
-      out.push({ toolName, args, argsText: JSON.stringify(args) });
-    } catch {
-      /* skip malformed fences */
-    }
+    const call = parseToolFence(match[1] || "", allowedNames);
+    if (call) out.push(call);
   }
   return out;
 }
 
-export function stripCodexChatToolFences(text: string): string {
-  return text.replace(FENCE_RE, "").replace(/\n{3,}/g, "\n\n").trim();
+/** 只剥掉真正变成 tool-call 的围栏；没解析成功（坏 JSON / 未声明工具名）的围栏留在正文里，
+ * 让「模型想调工具但没调成」可见，而不是静默吞掉。 */
+export function stripCodexChatToolFences(text: string, allowedNames?: ReadonlySet<string>): string {
+  return text
+    .replace(FENCE_RE, (whole, raw: string) => (parseToolFence(raw, allowedNames) ? "" : whole))
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
-export function extractCodexAgentMessageFromLine(line: string): string {
+export type CodexAgentMessageSnapshot = {
+  itemId?: string;
+  text: string;
+  completed: boolean;
+};
+
+/** Parse one JSONL event. `item.text` is a snapshot of that item, not a delta. */
+export function extractCodexAgentMessageSnapshotFromLine(line: string): CodexAgentMessageSnapshot | null {
   const trimmed = line.trim();
-  if (!trimmed.startsWith("{")) return "";
+  if (!trimmed.startsWith("{")) return null;
   try {
     const event = JSON.parse(trimmed) as Record<string, unknown>;
     const item = isRecord(event.item) ? event.item : event;
     const type = typeof event.type === "string" ? event.type : "";
     if (type === "item.completed" || type === "item.updated" || !type) {
-      if (item.type === "agent_message" && typeof item.text === "string") return item.text;
+      if (item.type === "agent_message" && typeof item.text === "string") {
+        const itemId = typeof item.id === "string" && item.id ? item.id : undefined;
+        return { itemId, text: item.text, completed: type === "item.completed" };
+      }
     }
   } catch {
     /* ignore non-event lines */
   }
-  return "";
+  return null;
+}
+
+export function extractCodexAgentMessageFromLine(line: string): string {
+  return extractCodexAgentMessageSnapshotFromLine(line)?.text ?? "";
 }
 
 export function extractCodexTurnErrorFromLine(line: string): string {

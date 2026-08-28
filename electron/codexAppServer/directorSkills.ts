@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -251,8 +252,11 @@ export function importDirectorSkillMarkdown(
   if (Buffer.byteLength(body, "utf8") > MAX_SKILL_MARKDOWN_BYTES) throw new Error("SKILL.md 太大");
   const fromFrontmatter = parseFrontmatterField(body, "name");
   const fromFile = typeof fileName === "string" ? path.basename(fileName, path.extname(fileName)) : "";
-  const id = sanitizeImportedSkillId(fromFrontmatter || fromFile);
-  if (!id) throw new Error("技能名不合法");
+  // 名字候选逐个清洗，而不是只取第一个非空的：frontmatter 写中文名（如 name: 夜市）时清洗不出
+  // ASCII id，直接整个拒绝导入——文件名其实合法。两个候选都洗不出时用内容哈希兜底，让「导入」
+  // 这个动作不因名字不是 ASCII 而失败；同内容重导得到同一 id（幂等覆盖，不翻倍）。
+  const fallbackId = `skill-${createHash("sha256").update(body).digest("hex").slice(0, 8)}`;
+  const id = sanitizeImportedSkillId(fromFrontmatter) || sanitizeImportedSkillId(fromFile) || fallbackId;
   const root = importedSkillsRoot(settingsRoot);
   fs.mkdirSync(root, { recursive: true });
   const destDir = path.join(root, id);
