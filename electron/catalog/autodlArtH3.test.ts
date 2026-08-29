@@ -5,9 +5,14 @@ import {
   AUTODL_ART_H3_I2V_CREATE_OP,
   AUTODL_ART_H3_QUERY_OP,
   AUTODL_ART_H3_T2V_CREATE_OP,
+  AUTODL_ART_H3_T2V_MAPPING,
   AUTODL_ART_VENDOR_SEED,
+  autodlArtCreateTaskIdOrThrow,
+  autodlArtEnvelopeFailure,
+  isAutodlArtLocalFallbackTaskId,
 } from "./autodlArtH3";
-import type { CatalogState } from "./types";
+import type { CatalogState, Mapping, Model, Vendor } from "./types";
+import { buildProfileTaskResult } from "../runtime";
 
 function emptyCatalog(): CatalogState {
   return { version: 3, vendors: [], models: [], mappings: [], apiKeysByVendor: {} };
@@ -111,5 +116,95 @@ describe("AutoDL.art H3 传输形状", () => {
       operation: AUTODL_ART_H3_QUERY_OP,
     });
     expect(built.url).toBe("https://www.autodl.art/api/v1/comfyui/comfyui_workflow/result/task-1");
+  });
+});
+
+const FALLBACK_ID = "task-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+
+const autodlVendor = {
+  key: "autodl-art",
+  name: "AutoDL.art",
+  enabled: true,
+  createdAt: "2026-08-22T00:00:00.000Z",
+  updatedAt: "2026-08-22T00:00:00.000Z",
+} as Vendor;
+
+const autodlModel = {
+  modelKey: "autodl-art-h3",
+  vendorKey: "autodl-art",
+  labelZh: "MiniMax H3（AutoDL.art）",
+  kind: "video",
+  enabled: true,
+  createdAt: "2026-08-22T00:00:00.000Z",
+  updatedAt: "2026-08-22T00:00:00.000Z",
+} as Model;
+
+describe("autodlArtCreateTaskIdOrThrow", () => {
+  it("Success + data.task_id 返回上游 UUID", () => {
+    expect(autodlArtCreateTaskIdOrThrow({
+      code: "Success",
+      data: { task_id: "d80da4e2-c280-4417-9fc6-cc078e357093", status: "QUEUED" },
+    })).toBe("d80da4e2-c280-4417-9fc6-cc078e357093");
+  });
+
+  it("缺 data.task_id 抛人话，不给假 id", () => {
+    expect(() => autodlArtCreateTaskIdOrThrow({
+      code: "Success",
+      msg: "ok",
+      data: { status: "QUEUED" },
+    })).toThrow(/没有返回 data\.task_id/);
+  });
+
+  it("code !== Success 当失败（含 Invalid authentication）", () => {
+    expect(autodlArtEnvelopeFailure({
+      code: "Unauthorized",
+      msg: "Invalid authentication",
+    })).toMatch(/Invalid authentication/);
+    expect(() => autodlArtCreateTaskIdOrThrow({
+      code: "Unauthorized",
+      msg: "Invalid authentication",
+    })).toThrow(/提交失败/);
+  });
+
+  it("识别本地 task-${uuid} 回落 id", () => {
+    expect(isAutodlArtLocalFallbackTaskId(FALLBACK_ID)).toBe(true);
+    expect(isAutodlArtLocalFallbackTaskId("d80da4e2-c280-4417-9fc6-cc078e357093")).toBe(false);
+    expect(isAutodlArtLocalFallbackTaskId("task-1")).toBe(false);
+  });
+});
+
+describe("buildProfileTaskResult · AutoDL create", () => {
+  const mapping = AUTODL_ART_H3_T2V_MAPPING as unknown as Mapping;
+
+  it("create JSON 没有 data.task_id → throws，不返回 queued+fallback id", async () => {
+    await expect(buildProfileTaskResult({
+      response: { code: "Error", msg: "missing first_frame", data: {} },
+      mapping,
+      operation: AUTODL_ART_H3_T2V_CREATE_OP,
+      request: { kind: "text_to_video", prompt: "a cat" },
+      taskIdFallback: FALLBACK_ID,
+      wantedKind: "video",
+      vendor: autodlVendor,
+      model: autodlModel,
+    })).rejects.toThrow(/AutoDL\.art/);
+  });
+
+  it("Success + task_id 仍用上游 UUID，不用本地 fallback", async () => {
+    const { result } = await buildProfileTaskResult({
+      response: {
+        code: "Success",
+        data: { task_id: "d80da4e2-c280-4417-9fc6-cc078e357093", status: "QUEUED" },
+      },
+      mapping,
+      operation: AUTODL_ART_H3_T2V_CREATE_OP,
+      request: { kind: "text_to_video", prompt: "a cat" },
+      taskIdFallback: FALLBACK_ID,
+      wantedKind: "video",
+      vendor: autodlVendor,
+      model: autodlModel,
+    });
+    expect(result.id).toBe("d80da4e2-c280-4417-9fc6-cc078e357093");
+    expect(result.id).not.toBe(FALLBACK_ID);
+    expect(result.status).toBe("queued");
   });
 });

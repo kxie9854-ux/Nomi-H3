@@ -28,16 +28,19 @@ export function resolveAutodlArtH3WorkflowId(params: Record<string, unknown>): s
   return AUTODL_ART_H3_WORKFLOWS.t2va;
 }
 
-/** AutoDL.art 没有独立 I2VA。只给首帧、不给尾帧也不给参考图 → 拒发。 */
+/** AutoDL.art 没有独立 I2VA。image_to_video / fl2va 缺尾帧（且没有参考图走 ref2va）→ 拒发。 */
+export const AUTODL_ART_H3_I2VA_REFUSE =
+  "AutoDL 没有只给首帧的 I2VA，请补尾帧或改文生/ref2va。";
+
 export function autodlArtH3RejectReason(params: Record<string, unknown>, kind: string): string | null {
   if (kind !== "image_to_video") return null;
   const first = trimUrl(params.first_frame) || trimUrl(params.firstFrameUrl);
   const last = trimUrl(params.last_frame) || trimUrl(params.lastFrameUrl);
-  const images = urlList(params.reference_image_urls);
-  if (first && !last && images.length === 0) {
-    return "AutoDL.art 没有独立图生视频（I2VA）。请补一张尾帧走首尾帧，或改用 1–9 张多图参考。";
-  }
-  return null;
+  const images = [...urlList(params.reference_image_urls), ...urlList(params.referenceImages)];
+  const audios = urlList(params.reference_audio_urls);
+  if (first && last) return null;
+  if (images.length || audios.length) return null;
+  return AUTODL_ART_H3_I2VA_REFUSE;
 }
 
 export function prepareAutodlArtH3Params(params: Record<string, unknown>): Record<string, unknown> {

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUTODL_ART_H3_I2VA_REFUSE,
   AUTODL_ART_H3_WORKFLOWS,
   autodlArtH3RejectReason,
   prepareAutodlArtH3Params,
   resolveAutodlArtH3WorkflowId,
 } from "./autodlArtH3Mode";
+import { imageEditGuardError } from "./taskParams";
 
 describe("resolveAutodlArtH3WorkflowId", () => {
   it("无媒体 → 文生", () => {
@@ -36,11 +38,44 @@ describe("resolveAutodlArtH3WorkflowId", () => {
 describe("autodlArtH3RejectReason", () => {
   it("只给首帧 → 拒 I2VA", () => {
     expect(autodlArtH3RejectReason({ first_frame: "https://a/f.jpg" }, "image_to_video"))
-      .toMatch(/没有独立图生视频/);
+      .toBe(AUTODL_ART_H3_I2VA_REFUSE);
+  });
+
+  it("首尾帧都缺 → 也拒（不要打 lightx2v 空槽）", () => {
+    expect(autodlArtH3RejectReason({}, "image_to_video")).toBe(AUTODL_ART_H3_I2VA_REFUSE);
+  });
+
+  it("首尾帧都有 → 放行", () => {
+    expect(autodlArtH3RejectReason({
+      first_frame: "https://a/f.jpg",
+      last_frame: "https://a/l.jpg",
+    }, "image_to_video")).toBeNull();
   });
 
   it("文生不拒", () => {
     expect(autodlArtH3RejectReason({}, "text_to_video")).toBeNull();
+  });
+
+  it("imageEditGuardError 缺尾帧拒发、双帧放行", () => {
+    const selected = { vendorKey: "autodl-art", modelKey: "autodl-art-h3" };
+    expect(imageEditGuardError(
+      "image_to_video",
+      { extras: { first_frame: "https://a/f.jpg" } },
+      true,
+      "MiniMax H3（AutoDL.art）",
+      undefined,
+      undefined,
+      selected,
+    )).toBe(AUTODL_ART_H3_I2VA_REFUSE);
+    expect(imageEditGuardError(
+      "image_to_video",
+      { extras: { first_frame: "https://a/f.jpg", last_frame: "https://a/l.jpg" } },
+      true,
+      "MiniMax H3（AutoDL.art）",
+      undefined,
+      undefined,
+      selected,
+    )).toBeNull();
   });
 });
 

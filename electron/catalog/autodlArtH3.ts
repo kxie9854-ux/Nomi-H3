@@ -11,6 +11,81 @@
 
 import type { HttpOperation } from "./types";
 import { ANON_UPLOAD_CHAIN } from "./assetLocalization";
+import { firstString, isJsonRecord } from "../jsonUtils";
+
+/** Nomi runTask 在 mapping 抽不到上游 id 时的本地回落：`task-${uuid}`。不能拿去轮询 AutoDL。 */
+const LOCAL_FALLBACK_TASK_ID_RE = /^task-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isAutodlArtLocalFallbackTaskId(taskId: string): boolean {
+  return LOCAL_FALLBACK_TASK_ID_RE.test(taskId.trim());
+}
+
+function autodlArtCode(response: unknown): string {
+  if (!isJsonRecord(response)) return "";
+  if (typeof response.code === "string" || typeof response.code === "number") return String(response.code).trim();
+  return "";
+}
+
+function autodlArtMessage(response: unknown): string {
+  if (!isJsonRecord(response)) return "";
+  const data = isJsonRecord(response.data) ? response.data : {};
+  const err = isJsonRecord(response.error) ? response.error : {};
+  return firstString(
+    response.msg,
+    response.message,
+    data.message,
+    data.msg,
+    err.message,
+    err.msg,
+    typeof response.error === "string" ? response.error : "",
+  );
+}
+
+function isAutodlArtSuccessCode(code: string): boolean {
+  const text = code.toLowerCase();
+  return text === "success" || text === "ok" || text === "0" || text === "200";
+}
+
+export function autodlArtBodySnippet(response: unknown, max = 280): string {
+  try {
+    const raw = JSON.stringify(response) || "";
+    const clipped = raw.length > max ? `${raw.slice(0, max)}…` : raw;
+    return clipped ? `body=${clipped}` : "";
+  } catch {
+    return "";
+  }
+}
+
+/** AutoDL 逻辑失败（HTTP 200 + code!==Success / Invalid authentication）。空串 = 信封看起来成功。 */
+export function autodlArtEnvelopeFailure(response: unknown): string {
+  const code = autodlArtCode(response);
+  const msg = autodlArtMessage(response);
+  const authFail = /invalid authentication/i.test(msg);
+  if (!authFail && !(code && !isAutodlArtSuccessCode(code))) return "";
+  const snippet = autodlArtBodySnippet(response);
+  return `AutoDL.art 提交失败（${code || "error"}）：${msg || "未知错误"}。${snippet}`.trim();
+}
+
+/**
+ * AutoDL.art **create** 必须给出 data.task_id。缺 id 或 code!==Success 直接抛人话，
+ * 禁止回落本地 task-${uuid} 再去 /result/{假id} 空转。
+ */
+export function autodlArtCreateTaskIdOrThrow(response: unknown): string {
+  const fail = autodlArtEnvelopeFailure(response);
+  if (fail) throw new Error(fail);
+  const data = isJsonRecord(response) && isJsonRecord(response.data) ? response.data : {};
+  const taskId = firstString(data.task_id);
+  if (!taskId) {
+    const code = autodlArtCode(response);
+    const msg = autodlArtMessage(response);
+    const snippet = autodlArtBodySnippet(response);
+    throw new Error(
+      `AutoDL.art 提交没有返回 data.task_id，无法轮询。code=${code || "?"} msg=${msg || "?"} ${snippet}`.trim(),
+    );
+  }
+  return taskId;
+}
+
 
 export const AUTODL_ART_VENDOR_SEED = {
   key: "autodl-art",

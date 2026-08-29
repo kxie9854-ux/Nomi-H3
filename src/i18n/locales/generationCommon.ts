@@ -279,6 +279,14 @@ export const zhGenerationCommon = {
         'director-style-otomo-wright': '风格',
       },
     },
+    model: {
+      aria: 'Codex 模型',
+      inherit: '默认',
+    },
+    effort: {
+      aria: '推理力度',
+      inherit: '默认',
+    },
   },
   assistantError: {
     provider: '服务商：{{message}}',
@@ -1761,6 +1769,14 @@ export const enGenerationCommon = {
         'director-transitions': 'Transitions',
         'director-style-otomo-wright': 'Style',
       },
+    },
+    model: {
+      aria: 'Codex model',
+      inherit: 'Default',
+    },
+    effort: {
+      aria: 'Reasoning effort',
+      inherit: 'Default',
     },
   },
   assistantError: {

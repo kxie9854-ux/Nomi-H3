@@ -48,10 +48,19 @@ describe("director history IPC contract", () => {
     expect(ipcSource).not.toMatch(/nomi:codex:read-history[\s\S]{0,400}respondElicitation/);
   });
 
+  it("exposes listModels and parses model/effort on send", () => {
+    expect(ipcSource).toContain('ipcMain.handle("nomi:codex:list-models"');
+    expect(ipcSource).toContain("readCodexTurnOverride(record)");
+    expect(preloadSource).toMatch(/listModels:\s*\(\)\s*=>\s*ipcRenderer\.invoke\("nomi:codex:list-models"\)/);
+    expect(codexBridgeSource).toContain("listModels: () => Promise<CodexModelDto[]>");
+    expect(codexBridgeSource).toContain("model?: string");
+    expect(codexBridgeSource).toContain("effort?: string");
+  });
+
   it("authenticates every Codex renderer-to-main IPC handler", () => {
     const registrations = ipcSource.match(/ipcMain\.handle\("nomi:codex:/g) ?? [];
     const senderGuards = ipcSource.match(/assertTrustedSender\(event\)/g) ?? [];
-    expect(registrations).toHaveLength(9);
+    expect(registrations).toHaveLength(10);
     expect(senderGuards).toHaveLength(registrations.length);
   });
 });

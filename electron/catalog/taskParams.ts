@@ -10,6 +10,8 @@ import { ARCHETYPE_WIRE_DEFAULTS, ARCHETYPE_SIZE_RATIO_SEMANTIC } from "./archet
 import { bodyReferencedParamKeys } from "./paramTranslate";
 import { bodyReferenceSupport, classifyReferenceKey, classifyReferenceKeyDetailed, type ReferenceFamily } from "./referenceReachability";
 import { readSelectedComfyReferenceContract, type ParameterReferenceSelection } from "./parameterReferenceContract";
+import { AUTODL_ART_VENDOR_SEED } from "./autodlArtH3";
+import { autodlArtH3RejectReason } from "./autodlArtH3Mode";
 
 /** taskTemplateParams 实际用到的 TaskRequest 子集（结构化，避免与 runtime 的 TaskRequest 循环依赖）。 */
 export type TaskParamsInput = {
@@ -594,6 +596,10 @@ export function imageEditGuardError(
   modeBodies?: ModelModeBody[],
   selected?: ParameterReferenceSelection,
 ): string | null {
+  if (selected?.vendorKey === AUTODL_ART_VENDOR_SEED.key) {
+    const autodl = autodlArtH3RejectReason(request.extras || {}, kind);
+    if (autodl) return autodl;
+  }
   // 第三闸对**所有 kind** 生效（运镜的参考视频可能挂在 t2v/omni 上），且只在真带了参考时才可能触发。
   if (typeof createBody !== "undefined") {
     const unreachable = unreachableReferenceLabels(request, createBody, selected);
@@ -604,6 +610,9 @@ export function imageEditGuardError(
     }
   }
   if (kind !== "image_edit" && kind !== "image_to_video") return null;
+  // AutoDL H3 的 I2V 槽位已由 autodlArtH3RejectReason 判过（首尾帧键名是 first_frame/last_frame，
+  // 通用 hasImageEditReferences 认的是 firstFrameUrl/referenceImages，会把合法 fl2va 误判成缺参考）。
+  if (selected?.vendorKey === AUTODL_ART_VENDOR_SEED.key && kind === "image_to_video") return null;
   const what = kind === "image_edit" ? "图生图" : "图生视频";
   if (!hasImageEditReferences(request, selected)) {
     return `${what}缺少参考图：这次请求里没有任何图片可以发给模型。请连接一张图片节点（或在参考槽添加图片）后再生成${kind === "image_edit" ? "，或切回「文生图」" : ""}。`;

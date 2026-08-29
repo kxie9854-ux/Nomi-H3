@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { nodeHasRecoverableTask } from './generationTaskState'
+import { nodeHasRecoverableTask, taskIdentityFromNode } from './generationTaskState'
 import type { CanvasNode } from './canvasGraph'
 
 function node(overrides: Partial<CanvasNode>): CanvasNode {
@@ -27,5 +27,27 @@ describe('nodeHasRecoverableTask', () => {
       status: 'error',
       error: 'fetch failed: https://autodl.art/api/v1/comfyui/comfyui_workflow/result/task-1',
     }), 'autodl-art')).toBe(true)
+  })
+})
+
+describe('taskIdentityFromNode', () => {
+  it('does not resume AutoDL local task-${uuid} fallback ids', () => {
+    const fake = 'task-7ae3e7b3-120f-4fad-89f2-10872d1ca2ee'
+    expect(taskIdentityFromNode(node({
+      kind: 'video',
+      status: 'recoverable',
+      runs: [{ taskId: fake, taskKind: 'image_to_video' }],
+    }), 'autodl-art', 'image_to_video')).toBeNull()
+  })
+
+  it('still resumes a real AutoDL UUID', () => {
+    expect(taskIdentityFromNode(node({
+      kind: 'video',
+      status: 'recoverable',
+      runs: [{ taskId: 'd80da4e2-c280-4417-9fc6-cc078e357093', taskKind: 'image_to_video' }],
+    }), 'autodl-art', 'image_to_video')).toEqual({
+      taskId: 'd80da4e2-c280-4417-9fc6-cc078e357093',
+      taskKind: 'image_to_video',
+    })
   })
 })

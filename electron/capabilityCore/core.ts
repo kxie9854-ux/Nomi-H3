@@ -39,7 +39,7 @@ import { pickFirstFramePainter } from './firstFramePainter'
 import { previousShotPromptFor } from './shotOrder'
 import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
 import { copyAssetFile } from '../assets/projectAssetStore'
-import { AUTODL_ART_H3_MODEL_SEED, AUTODL_ART_VENDOR_SEED } from '../catalog/autodlArtH3'
+import { AUTODL_ART_H3_MODEL_SEED, AUTODL_ART_VENDOR_SEED, isAutodlArtLocalFallbackTaskId } from '../catalog/autodlArtH3'
 import { autodlArtH3RejectReason, prepareAutodlArtH3Params } from '../catalog/autodlArtH3Mode'
 import { createSpendTrustScope } from './mcpSpendTrust'
 import {
@@ -364,11 +364,36 @@ export async function generateOnProject(
     || derivedRefKind
     || defaultKindForIntent(intent, references.length > 0)
 
+  const isAutodlArtH3Early = input.vendor === AUTODL_ART_VENDOR_SEED.key && input.modelKey === AUTODL_ART_H3_MODEL_SEED.modelKey
+  if (isAutodlArtH3Early) {
+    const guardParams: Record<string, unknown> = { ...(input.params || {}) }
+    if (paramFirst || frames.first) {
+      const first = paramFirst || frames.first
+      guardParams.first_frame = first
+      guardParams.firstFrameUrl = first
+    }
+    if (paramLast || frames.last) {
+      const last = paramLast || frames.last
+      guardParams.last_frame = last
+      guardParams.lastFrameUrl = last
+    }
+    if (references.length) {
+      guardParams.reference_image_urls = references
+      guardParams.referenceImages = references
+    }
+    const rejected = autodlArtH3RejectReason(guardParams, kind)
+    if (rejected) throw new Error(rejected)
+  }
+
   // 已经拿到 provider taskId 的节点只续查，绝不重新走确认/提交。覆盖 running/recoverable，
   // 也覆盖旧版把查询断线错误落成 error 的项目（taskIdentityFromNode 负责一次性迁移）。
-  const persistedTask = nodeHasRecoverableTask(node, input.vendor)
-    ? taskIdentityFromNode(node, input.vendor, kind)
-    : null
+  const persistedTask = (() => {
+    const identity = nodeHasRecoverableTask(node, input.vendor)
+      ? taskIdentityFromNode(node, input.vendor, kind)
+      : null
+    if (identity && isAutodlArtH3Early && isAutodlArtLocalFallbackTaskId(identity.taskId)) return null
+    return identity
+  })()
   if (persistedTask && fetchTaskResultFn) {
     await gateway.apply(setNodeTaskInSnapshot(await gateway.readDoc(), nodeId, persistedTask, 'running'))
     try {

@@ -5,7 +5,7 @@ import { installMcp, readMcpInfo } from "../capabilityCore/mcpConfig";
 import { getProjectsRoot, PROJECT_ROOT_ENV } from "../runtimePaths";
 import { getSettingsRoot, SETTINGS_ROOT_ENV } from "../settings/settingsRoot";
 import { wrapDirectorUserText } from "./directorUserText";
-import { getCodexAppServerHost, type CodexUiEvent } from "./host";
+import { getCodexAppServerHost, readCodexTurnOverride, type CodexUiEvent } from "./host";
 import { importDirectorSkillMarkdown, listDirectorSkills, parseDirectorSkillMode, resolveTurnSkills } from "./directorSkills";
 import { assertTrustedSender } from "../ipcSenderGuard";
 
@@ -69,7 +69,7 @@ export function registerCodexAppServerIpc(): void {
   ipcMain.handle("nomi:codex:send", async (event, payload: unknown) => {
     assertTrustedSender(event);
     const record = payload && typeof payload === "object"
-      ? (payload as { text?: unknown; cwd?: unknown; projectId?: unknown; canvasContext?: unknown; skillIds?: unknown; mode?: unknown })
+      ? (payload as { text?: unknown; cwd?: unknown; projectId?: unknown; canvasContext?: unknown; skillIds?: unknown; mode?: unknown; model?: unknown; effort?: unknown })
       : {};
     const text = typeof record.text === "string" ? record.text.trim() : "";
     if (!text) throw new Error("请先写一句给 Codex 的指令");
@@ -79,17 +79,25 @@ export function registerCodexAppServerIpc(): void {
       ? record.skillIds.filter((id): id is string => typeof id === "string")
       : [];
     const mode = parseDirectorSkillMode(record.mode);
+    const turn = readCodexTurnOverride(record);
     await host.ensure(resolveCwd(record.cwd), path.join(app.getAppPath(), "skills"));
     await host.send(
       wrapDirectorUserText(text, { projectId, canvasContext }),
       resolveTurnSkills(app.getAppPath(), getSettingsRoot(), mode, skillIds),
       projectId,
+      [],
+      turn,
     );
     return { ok: true };
   });
   ipcMain.handle("nomi:codex:list-skills", (event) => {
     assertTrustedSender(event);
     return listDirectorSkills(app.getAppPath(), getSettingsRoot());
+  });
+  ipcMain.handle("nomi:codex:list-models", async (event) => {
+    assertTrustedSender(event);
+    await host.ensure(directorCwd(), path.join(app.getAppPath(), "skills"));
+    return host.listModels();
   });
   ipcMain.handle("nomi:codex:import-skill", (event, payload: unknown) => {
     assertTrustedSender(event);

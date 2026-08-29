@@ -13,6 +13,7 @@ import {
   isCodexInternalStderr,
   isCodexNomiToolApproval,
   nomiElicitationAccept,
+  parseCodexModelList,
   readNomiSpendApprovalPasses,
   readNomiSpendApprovalScope,
 } from "./host";
@@ -355,6 +356,98 @@ describe("project-scoped director threads", () => {
     expect(raw.threads).toEqual({ [DIRECTOR_LEGACY_SESSION_KEY]: "thread-1" });
     expect(raw.threads).not.toHaveProperty("../etc/passwd");
     expect(fs.existsSync(path.resolve(settingsRoot, "..", "etc", "passwd"))).toBe(false);
+  });
+});
+
+describe("turn/start model and effort overrides", () => {
+  it("includes model and effort on turn/start when both are set", async () => {
+    const { rpc, calls } = fakeHostRpc();
+    const host = await readyHost(tempSettingsRoot(), rpc);
+    await host.send("idea", "/skill.md", "project-a", [], { model: "gpt-5.4", effort: "high" });
+    const turn = calls.find((call) => call.method === "turn/start");
+    expect(turn?.params).toMatchObject({
+      threadId: "thread-1",
+      model: "gpt-5.4",
+      effort: "high",
+    });
+  });
+
+  it("omits model and effort keys when the user has not picked them", async () => {
+    const { rpc, calls } = fakeHostRpc();
+    const host = await readyHost(tempSettingsRoot(), rpc);
+    await host.send("idea", "/skill.md", "project-a");
+    const params = calls.find((call) => call.method === "turn/start")?.params as Record<string, unknown>;
+    expect(params).toMatchObject({ threadId: "thread-1" });
+    expect(params).not.toHaveProperty("model");
+    expect(params).not.toHaveProperty("effort");
+  });
+
+  it("trims blanks and omits whitespace-only overrides", async () => {
+    const { rpc, calls } = fakeHostRpc();
+    const host = await readyHost(tempSettingsRoot(), rpc);
+    await host.send("idea", "/skill.md", "project-a", [], { model: "  ", effort: "   " });
+    const params = calls.find((call) => call.method === "turn/start")?.params as Record<string, unknown>;
+    expect(params).not.toHaveProperty("model");
+    expect(params).not.toHaveProperty("effort");
+  });
+});
+
+describe("listModels", () => {
+  it("filters hidden rows and maps the DTO", async () => {
+    const rpc: CodexRpc = async (method) => {
+      if (method !== "model/list") return {};
+      return {
+        data: [
+          {
+            id: "gpt-5.4",
+            model: "gpt-5.4",
+            displayName: "GPT-5.4",
+            hidden: false,
+            isDefault: true,
+            defaultReasoningEffort: "medium",
+            supportedReasoningEfforts: [
+              { reasoningEffort: "low", description: "Fast" },
+              { reasoningEffort: "medium", description: "Default" },
+              { reasoningEffort: "high", description: "Deep" },
+            ],
+          },
+          {
+            id: "hidden-model",
+            model: "hidden-model",
+            displayName: "Hidden",
+            hidden: true,
+            isDefault: false,
+            defaultReasoningEffort: "low",
+            supportedReasoningEfforts: [],
+          },
+        ],
+      };
+    };
+    const host = await readyHost(tempSettingsRoot(), rpc);
+    await expect(host.listModels()).resolves.toEqual([
+      {
+        id: "gpt-5.4",
+        model: "gpt-5.4",
+        displayName: "GPT-5.4",
+        isDefault: true,
+        defaultReasoningEffort: "medium",
+        supportedReasoningEfforts: [
+          { reasoningEffort: "low", description: "Fast" },
+          { reasoningEffort: "medium", description: "Default" },
+          { reasoningEffort: "high", description: "Deep" },
+        ],
+      },
+    ]);
+  });
+
+  it("returns [] when model/list fails so the director still works", async () => {
+    const rpc: CodexRpc = async (method) => {
+      if (method === "model/list") throw new Error("codex_models_manager timeout waiting for child process to exit");
+      return {};
+    };
+    const host = await readyHost(tempSettingsRoot(), rpc);
+    await expect(host.listModels()).resolves.toEqual([]);
+    expect(parseCodexModelList(null)).toEqual([]);
   });
 });
 

@@ -32,6 +32,7 @@ import { FOCUS_DIRECTOR_COMPOSER_EVENT } from '../nodes/nodeSizing'
 import { shouldShowDirectorBackendSetup, useDirectorBackendReady } from '../agent/useDirectorBackendReady'
 import { DirectorSetupBanner } from './DirectorSetupBanner'
 import { DirectorSkillPicker } from './DirectorSkillPicker'
+import { DirectorModelPicker } from './DirectorModelPicker'
 import {
   readDirectorSkillIds,
   readDirectorSkillMode,
@@ -39,6 +40,12 @@ import {
   writeDirectorSkillMode,
   type DirectorSkillMode,
 } from '../agent/directorSkillSelection'
+import {
+  readDirectorCodexEffort,
+  readDirectorCodexModel,
+  writeDirectorCodexEffort,
+  writeDirectorCodexModel,
+} from '../agent/directorModelSelection'
 
 type CodexEvent =
   | { kind: 'status'; ready: boolean; account: { type?: string; email?: string | null; planType?: string | null } | null; error?: string }
@@ -168,6 +175,8 @@ export default function CodexDirectorPanel({
   const [overflowOpen, setOverflowOpen] = React.useState(false)
   const [skillIds, setSkillIds] = React.useState<string[]>([])
   const [skillMode, setSkillMode] = React.useState<DirectorSkillMode>('film')
+  const [codexModel, setCodexModel] = React.useState(() => readDirectorCodexModel())
+  const [codexEffort, setCodexEffort] = React.useState(() => readDirectorCodexEffort())
   const assistantId = React.useRef<string | null>(null)
   const overflowRef = React.useRef<HTMLDivElement>(null)
   const [projectId, setProjectId] = React.useState(() => (
@@ -353,12 +362,14 @@ export default function CodexDirectorPanel({
       canvasContext: turn.canvasContext,
       skillIds,
       mode: skillMode,
+      ...(codexModel ? { model: codexModel } : {}),
+      ...(codexEffort ? { effort: codexEffort } : {}),
     }).catch((err: unknown) => {
       if (sendProjectId && sendProjectId !== projectIdRef.current) return
       setBusy(false)
       setError(err instanceof Error ? err.message : String(err))
     })
-  }, [busy, projectId, skillIds, skillMode])
+  }, [busy, codexEffort, codexModel, projectId, skillIds, skillMode])
 
   const send = React.useCallback(() => {
     sendText(draft)
@@ -535,7 +546,14 @@ export default function CodexDirectorPanel({
           selectedIds={skillIds}
           onChange={(ids) => setSkillIds(writeDirectorSkillIds(projectId, ids))}
           onError={setError}
-        />
+        >
+          <DirectorModelPicker
+            model={codexModel}
+            effort={codexEffort}
+            onModelChange={(next) => setCodexModel(writeDirectorCodexModel(next))}
+            onEffortChange={(next) => setCodexEffort(writeDirectorCodexEffort(next))}
+          />
+        </DirectorSkillPicker>
         {selectedCount > 0 ? (
           <p className="text-caption text-nomi-ink-3">{t('generationCommon.codex.selectionHint', { count: selectedCount })}</p>
         ) : null}

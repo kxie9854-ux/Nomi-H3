@@ -48,6 +48,7 @@ import { activeTaskProjectFallback, unlocalizedTaskAsset } from "./tasks/activeP
 import type { BillingModelKind, HttpOperation, Mapping, Model, ProfileKind, Vendor } from "./catalog/types";
 import { billingKindForTaskKind, selectTaskMapping } from "./catalog/types";
 import { applyHeadlessParamDefaults, imageEditGuardError } from "./catalog/taskParams";
+import { AUTODL_ART_VENDOR_SEED, autodlArtCreateTaskIdOrThrow, autodlArtEnvelopeFailure } from "./catalog/autodlArtH3";
 import { modelModeBodies } from "./catalog/modelCatalogListing";
 import { runCustomCallTask } from "./catalog/customCallDispatch";
 import { resolveCustomCallExecution } from "./catalog/customCallMode";
@@ -302,13 +303,17 @@ export async function buildProfileTaskResult(input: {
   const { response_mapping: rawResponseMapping, provider_meta_mapping: rawMetaMapping } = input.operation;
   const responseMapping = isJsonRecord(rawResponseMapping) ? rawResponseMapping : null;
   const providerMetaMapping = isJsonRecord(rawMetaMapping) ? rawMetaMapping : null;
+  const isAutodlArt = input.vendor?.key === AUTODL_ART_VENDOR_SEED.key;
+  const isAutodlCreate = isAutodlArt && String(input.operation.method || "").toUpperCase() === "POST";
+  // AutoDL create 必须有 data.task_id；缺了就抛，绝不用本地 task-${uuid} 去空转轮询。
+  if (isAutodlCreate) autodlArtCreateTaskIdOrThrow(response);
   const providerMeta = providerMetaFromResponse(response, providerMetaMapping);
   const taskId = firstString(
     firstMappedString(response, responseMapping, "task_id"),
     providerMeta.task_id,
     providerMeta.query_id,
     extractTaskIdShared(response),
-    input.taskIdFallback,
+    isAutodlCreate ? "" : input.taskIdFallback,
   );
   const mappedAssetValues = ["assets", "image_url", "video_url", "model_url"].flatMap((key) =>
     valuesFromMapping(response, responseMapping, key),
@@ -316,7 +321,12 @@ export async function buildProfileTaskResult(input: {
   const assetUrls = Array.from(
     new Set([...mappedAssetValues.flatMap(collectAssetUrls), ...collectAssetUrls(extractAssetUrl(response))]),
   );
-  const { status, unrecognizedStatus } = resolveTaskStatus(response, responseMapping, input.mapping.statusMapping, assetUrls);
+  let { status, unrecognizedStatus } = resolveTaskStatus(response, responseMapping, input.mapping.statusMapping, assetUrls);
+  const autodlFail = isAutodlArt ? autodlArtEnvelopeFailure(response) : "";
+  if (autodlFail && status !== "succeeded") {
+    status = "failed";
+    unrecognizedStatus = "";
+  }
   const type: "image" | "video" | "model3d" =
     input.wantedKind === "video" ? "video" : input.wantedKind === "model3d" ? "model3d" : "image";
   const assets = input.projectId
@@ -331,7 +341,7 @@ export async function buildProfileTaskResult(input: {
       status,
       assets,
       raw: input.response,
-      ...(status === "failed" ? { error: taskFailureMessageFromResponse(response, responseMapping) } : {}),
+      ...(status === "failed" ? { error: autodlFail || taskFailureMessageFromResponse(response, responseMapping) } : {}),
       // S4-1:profile 主路径补 provenance(与 fallback 共用 buildTaskProvenance,单一真相)。
       ...(status === "succeeded" && input.vendor && input.model
         ? {

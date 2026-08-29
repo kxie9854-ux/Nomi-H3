@@ -27,6 +27,83 @@ export type CodexAppServerHostOptions = {
 
 export type CodexAccount = { type: string; email?: string | null; planType?: string | null } | null;
 
+export type CodexReasoningEffortDto = {
+  reasoningEffort: string;
+  description: string;
+};
+
+export type CodexModelDto = {
+  id: string;
+  model: string;
+  displayName: string;
+  isDefault: boolean;
+  defaultReasoningEffort: string | null;
+  supportedReasoningEfforts: CodexReasoningEffortDto[];
+};
+
+export type CodexTurnOverride = {
+  model?: string;
+  effort?: string;
+};
+
+function optionalTrimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+/** Map `model/list` RPC result; drop hidden items; skip malformed rows. */
+export function parseCodexModelList(result: unknown): CodexModelDto[] {
+  const root = asRecord(result);
+  const data = Array.isArray(result)
+    ? result
+    : Array.isArray(root?.data)
+      ? root.data
+      : [];
+  const out: CodexModelDto[] = [];
+  for (const item of data) {
+    const rec = asRecord(item);
+    if (!rec || rec.hidden === true) continue;
+    const model = optionalTrimmedString(rec.model) || optionalTrimmedString(rec.id);
+    if (!model) continue;
+    const id = optionalTrimmedString(rec.id) || model;
+    const displayName = optionalTrimmedString(rec.displayName) || model;
+    const defaultReasoningEffort = optionalTrimmedString(rec.defaultReasoningEffort) || null;
+    const effortsRaw = Array.isArray(rec.supportedReasoningEfforts) ? rec.supportedReasoningEfforts : [];
+    const supportedReasoningEfforts: CodexReasoningEffortDto[] = [];
+    for (const effort of effortsRaw) {
+      const er = asRecord(effort);
+      const reasoningEffort = optionalTrimmedString(er?.reasoningEffort);
+      if (!reasoningEffort) continue;
+      supportedReasoningEfforts.push({
+        reasoningEffort,
+        description: optionalTrimmedString(er?.description),
+      });
+    }
+    out.push({
+      id,
+      model,
+      displayName,
+      isDefault: rec.isDefault === true,
+      defaultReasoningEffort,
+      supportedReasoningEfforts,
+    });
+  }
+  return out;
+}
+
+export function readCodexTurnOverride(value: unknown): { model: string; effort: string } {
+  const rec = asRecord(value) || {};
+  return {
+    model: optionalTrimmedString(rec.model),
+    effort: optionalTrimmedString(rec.effort),
+  };
+}
+
 export type CodexUiEvent =
   | { kind: "status"; ready: boolean; account: CodexAccount; error?: string }
   | { kind: "delta"; text: string; projectId?: string }
@@ -262,6 +339,7 @@ export class CodexAppServerHost {
     skillPathOrSkills: string | null | readonly DirectorSkillRef[],
     projectId?: string,
     extraSkills: readonly DirectorSkillRef[] = [],
+    turn?: CodexTurnOverride,
   ): Promise<void> {
     const threadId = await this.ensureProjectThread(projectId);
     const safeProjectId = normalizeDirectorProjectId(projectId) || undefined;
@@ -276,13 +354,18 @@ export class CodexAppServerHost {
             : []),
           ...extraSkills,
         ];
-    const started = (await this.request("turn/start", {
+    const override = readCodexTurnOverride(turn);
+    const params: Record<string, unknown> = {
       threadId,
       input: [
         ...skillInputItems(skills),
         { type: "text", text },
       ],
-    })) as { turn?: { id?: string } };
+    };
+    // Omit unset keys so ~/.codex/config.toml model + effort apply.
+    if (override.model) params.model = override.model;
+    if (override.effort) params.effort = override.effort;
+    const started = (await this.request("turn/start", params)) as { turn?: { id?: string } };
     if (typeof started?.turn?.id === "string") {
       this.activeTurn = { threadId, turnId: started.turn.id, ...(safeProjectId ? { projectId: safeProjectId } : {}) };
     }
@@ -316,6 +399,18 @@ export class CodexAppServerHost {
       lines: limited.lines,
       truncated: limited.truncated,
     };
+  }
+
+  /**
+   * Visible Codex models for the director picker. RPC failure returns [] so the panel still sends.
+   * Hidden rows are dropped even if the server ignored includeHidden: false.
+   */
+  async listModels(): Promise<CodexModelDto[]> {
+    try {
+      return parseCodexModelList(await this.request("model/list", { includeHidden: false }));
+    } catch {
+      return [];
+    }
   }
 
   async interrupt(): Promise<void> {

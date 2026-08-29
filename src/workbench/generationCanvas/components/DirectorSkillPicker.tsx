@@ -18,12 +18,14 @@ export function DirectorSkillPicker({
   selectedIds,
   onChange,
   onError,
+  children,
 }: {
   mode: DirectorSkillMode
   onModeChange: (mode: DirectorSkillMode) => void
   selectedIds: readonly string[]
   onChange: (ids: string[]) => void
   onError: (message: string) => void
+  children?: React.ReactNode
 }): JSX.Element {
   const { t } = useTranslation()
   const inputRef = React.useRef<HTMLInputElement>(null)
@@ -99,6 +101,7 @@ export function DirectorSkillPicker({
           </WorkbenchButton>
         ))}
       </div>
+      {children}
       {mode === 'film' ? (
         <div className="flex gap-1 overflow-x-auto pb-0.5" role="listbox" aria-label={t('generationCommon.codex.skill.aria')} aria-multiselectable="true">
           {overlays.map((skill) => {

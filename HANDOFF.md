@@ -9,6 +9,11 @@
 
 ## 0. 2026-08-24 最新完成
 
+### 2026-08-29 增量
+
+- **导演 Codex 模型/力度**：侧栏可点选 `turn/start` 的 model + effort（「默认」省略键，继承 ~/.codex/config.toml）；`model/list` 失败时面板仍可用。
+- **AutoDL.art 视频无响应**：create 缺 data.task_id 或 code!==Success 时直接报错，不再用本地 task-uuid 空转轮询；缺尾帧的 I2VA 在扣费前拒发。
+
 ### 2026-08-27 增量（bug 修复两笔）
 
 - **中文名 skill 导入修复**：`importDirectorSkillMarkdown` 此前只取 frontmatter 名或文件名**一个**候选去清洗 id，frontmatter 写中文名（如 `name: 夜市`）时洗不出 ASCII id 直接报「技能名不合法」，即使文件名合法。现在逐候选回退（frontmatter → 文件名 → 内容哈希 `skill-<hash8>` 兜底），同内容重导同 id 幂等覆盖。

@@ -1,6 +1,6 @@
 // 生成任务的持久化状态与画布输入解析。
 // 从 core.ts 抽出，避免编排层继续膨胀；所有传输仍只调用 core.generateOnProject（无并行入口）。
-import { AUTODL_ART_VENDOR_SEED } from '../catalog/autodlArtH3'
+import { AUTODL_ART_VENDOR_SEED, isAutodlArtLocalFallbackTaskId } from '../catalog/autodlArtH3'
 import type { CanvasSnapshot } from './canvasGraph'
 
 export type GenerateIntent = 'image' | 'video' | 'text' | 'audio'
@@ -146,19 +146,19 @@ export function taskIdentityFromNode(
   ]
   for (const candidate of candidates) {
     const taskId = typeof candidate.taskId === 'string' ? candidate.taskId.trim() : ''
-    if (taskId) {
-      return {
-        taskId,
-        taskKind: typeof candidate.taskKind === 'string' && candidate.taskKind.trim()
-          ? candidate.taskKind.trim()
-          : fallbackTaskKind,
-      }
+    if (!taskId) continue
+    if (vendor === AUTODL_ART_VENDOR_SEED.key && isAutodlArtLocalFallbackTaskId(taskId)) continue
+    return {
+      taskId,
+      taskKind: typeof candidate.taskKind === 'string' && candidate.taskKind.trim()
+        ? candidate.taskKind.trim()
+        : fallbackTaskKind,
     }
   }
   if (vendor === AUTODL_ART_VENDOR_SEED.key && typeof node.error === 'string') {
     const matched = node.error.match(/\/api\/v1\/comfyui\/comfyui_workflow\/result\/([^\s:?#/]+)/)
     const taskId = matched?.[1] ? decodeURIComponent(matched[1]) : ''
-    if (taskId) return { taskId, taskKind: fallbackTaskKind }
+    if (taskId && !isAutodlArtLocalFallbackTaskId(taskId)) return { taskId, taskKind: fallbackTaskKind }
   }
   return null
 }
