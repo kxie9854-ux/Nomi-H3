@@ -94,6 +94,33 @@ describe("isLocalAssetUrl / collect / replace", () => {
       fileName: "broken.png",
     })).toThrow(/未知\/损坏/);
   });
+
+  it("accepts recognized raster bytes when early binary metadata contains markup-like text", () => {
+    const c2paPng = {
+      bytes: Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        Buffer.from("\0caBX\0jumb\0image/svg+xml\0<svg xmlns='http://www.w3.org/2000/svg'></svg>"),
+      ]),
+      contentType: "image/png",
+      fileName: "codex-image-with-c2pa.png",
+    };
+    const jpegWithTextMetadata = {
+      bytes: Buffer.concat([
+        Buffer.from([0xff, 0xd8, 0xff, 0xe1]),
+        Buffer.from("Exif\0\0description=<html>literal metadata</html>"),
+      ]),
+      contentType: "image/jpeg",
+      fileName: "camera-metadata.jpg",
+    };
+
+    expect(() => assertLocalAssetMediaBytes(c2paPng)).not.toThrow();
+    expect(() => assertLocalAssetMediaBytes(jpegWithTextMetadata)).not.toThrow();
+    expect(() => assertLocalAssetMediaBytes({
+      ...c2paPng,
+      contentType: "image/jpeg",
+      fileName: "wrongly-declared.jpg",
+    })).toThrow(/声明为 image\/jpeg.*文件头识别为 image\/png/);
+  });
 });
 
 describe("resolveLocalAsset (per strategy)", () => {

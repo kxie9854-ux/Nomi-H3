@@ -4,7 +4,9 @@ import { createDefaultTimeline } from '../timeline/timelineMath'
 import type { TimelineState } from '../timeline/timelineTypes'
 import {
   createDefaultWorkbenchDocument,
+  STORYBOARD_DESIGN_STATUSES,
   type PreviewAspectRatio,
+  type StoryboardDesign,
   type WorkbenchDocument,
 } from '../workbenchTypes'
 import { createDefaultGenerationCanvasSnapshot } from '../generationCanvas/store/generationCanvasDefaults'
@@ -49,7 +51,11 @@ export const workbenchProjectPayloadSchema = z.object({
   // 可默认字段（画布内容完好）时会 safeParse 失败 → 整个项目硬抛「缺少必要字段」打不开。降为
   // z.unknown().optional()：缺失或 present-but-malformed 都交给 normalizer 降级，不再让项目锁死。
   // generationCanvas（真实画布内容）保持必填——它是关键字段，缺它才走空项目兜底/上报。
+  // P2 多文档：workbenchDocuments[]（新）+ activeDocumentId 取代单 workbenchDocument；
+  // 单 workbenchDocument 保留只读兼容（老项目迁移用）。
   workbenchDocument: z.unknown().optional(),
+  workbenchDocuments: z.array(z.unknown()).optional(),
+  activeDocumentId: z.string().optional(),
   timeline: z.unknown().optional(),
   previewAspectRatio: z.enum(['16:9', '9:16', '1:1', '4:5', '3:4', '4:3', '21:9']).optional(),
   // Keep project loading tolerant of legacy v0.5 category ids so the
@@ -61,10 +67,32 @@ export const workbenchProjectPayloadSchema = z.object({
   /**
    * P0-6:创作区分镜方案(用户手改过锚/镜序的结构化产物)。此前是纯内存态,切项目/重载即蒸发。
    * 可选 + nullable 让老项目向后兼容(无此字段即无方案)。
+   * @deprecated P4:改为 storyboardPlans(按 documentId 索引)。此单字段仅读侧迁移用。
    */
   storyboardPlan: storyboardPlanSchema.nullable().optional(),
-  /** 方案落画布状态(草稿/已落画布)。老项目无字段 → 归一化为 false(当草稿)。 */
+  /** @deprecated P4:随 storyboardPlans 每条 entry 内嵌 committed。此字段仅读侧迁移用。 */
   storyboardPlanCommitted: z.boolean().optional(),
+  /** P4:每篇原稿的分镜方案映射（key=documentId，value={plan, committed}）。可选，老项目无。 */
+  storyboardPlans: z.record(
+    z.object({
+      plan: storyboardPlanSchema,
+      committed: z.boolean().optional(),
+    }),
+  ).optional(),
+  /** Multiple storyboard designs per draft. Older payloads are migrated from storyboardPlans. */
+  storyboardDesignsByDocumentId: z.record(
+    z.array(z.object({
+      id: z.string().min(1),
+      documentId: z.string().min(1),
+      title: z.string(),
+      plan: storyboardPlanSchema,
+      committed: z.boolean(),
+      status: z.enum(STORYBOARD_DESIGN_STATUSES),
+      sourceDocumentUpdatedAt: z.number().finite(),
+      createdAt: z.number().finite(),
+      updatedAt: z.number().finite(),
+    })),
+  ).optional(),
 })
 
 export const workbenchProjectRecordSchema = workbenchProjectSummarySchema.extend({
@@ -113,7 +141,11 @@ export type WorkbenchProjectSummary = {
 }
 
 export type WorkbenchProjectPayload = {
-  workbenchDocument: WorkbenchDocument
+  /** P2 多文档：原稿集合（新真相源）。旧项目读侧兼容见 normalizePayload。 */
+  workbenchDocuments?: WorkbenchDocument[]
+  activeDocumentId?: string
+  /** @deprecated 单文档（旧字段，读侧迁移用，写侧不再产出）。 */
+  workbenchDocument?: WorkbenchDocument
   timeline: TimelineState
   /** 项目成片画幅；老项目缺省按 16:9 归一化。 */
   previewAspectRatio?: PreviewAspectRatio
@@ -121,9 +153,12 @@ export type WorkbenchProjectPayload = {
   categories?: ProjectCategory[]
   /** S5-b-1:快照覆盖到日志的 seq(尾部重放游标);老项目无此字段则跳过重放。 */
   generationCanvasLastSeq?: number
-  /** P0-6:创作分镜方案(per-project 工作产物);无则 null/缺省。 */
+  /** P4:每篇原稿的分镜方案映射（key=documentId）。无则空。 */
+  storyboardPlans?: Record<string, { plan: StoryboardPlan; committed: boolean }>
+  storyboardDesignsByDocumentId?: Record<string, StoryboardDesign[]>
+  /** @deprecated P0-6 单字段，P4 改为 storyboardPlans；仅读侧迁移用。 */
   storyboardPlan?: StoryboardPlan | null
-  /** 方案落画布状态(草稿/已落画布);无则 false。 */
+  /** @deprecated 随 storyboardPlans entry 内嵌；仅读侧迁移用。 */
   storyboardPlanCommitted?: boolean
 }
 
@@ -144,8 +179,10 @@ export type WorkbenchProjectRecordLegacy = {
 }
 
 export function createDefaultWorkbenchProjectPayload(): WorkbenchProjectPayload {
+  const doc = createDefaultWorkbenchDocument()
   return {
-    workbenchDocument: createDefaultWorkbenchDocument(),
+    workbenchDocuments: [doc],
+    activeDocumentId: doc.id,
     timeline: createDefaultTimeline(),
     previewAspectRatio: '16:9',
     generationCanvas: createDefaultGenerationCanvasSnapshot(),

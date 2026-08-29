@@ -1,0 +1,51 @@
+{
+  "schema_version": 2,
+  "id": "2026-08-29-raster-metadata-markup-false-positive",
+  "problem_type": "valid raster asset rejected before video generation",
+  "symptom": "A Codex-generated PNG was reported as HTML/XML/SVG text and rejected before AutoDL.art H3 submission even though its PNG signature and dimensions were valid.",
+  "direct_cause": "The local asset guard decoded the first 2048 bytes of every non-SVG image as UTF-8 and rejected any occurrence of an SVG tag, including an SVG icon embedded inside the PNG's C2PA metadata.",
+  "class_root": "The shared media boundary did not make magic-byte classification authoritative before applying text-payload heuristics, so valid binary raster containers could be reclassified from incidental metadata bytes.",
+  "affected_population": [
+    "Users sending Codex-generated PNGs with C2PA metadata into any image-reference generation path",
+    "Users sending any recognized raster image whose early metadata contains HTML, XML, or SVG-like text",
+    "All providers and upload strategies that consume local images through assertLocalAssetTransportReady or localizeAssetsForVendor"
+  ],
+  "scope_paths": [
+    "electron/catalog/assetLocalization.ts"
+  ],
+  "entry_points": [
+    "assertLocalAssetTransportReady before paid provider submission",
+    "localizeAssetsForVendor before local image upload or inline transport",
+    "custom provider dispatch and standard runtime provider dispatch through the shared local asset reader"
+  ],
+  "internal_only_reason": "The failure is caused entirely by Nomi's ordering of its own byte-sniffing and markup heuristics. The PNG signature, embedded metadata bytes, and rejection branch are locally observable; no provider API, model behavior, or third-party dependency contract is changed or needed to decide the invariant.",
+  "invariants": [
+    "A recognized raster magic header is authoritative for binary-vs-text classification; incidental markup strings inside that binary container cannot reclassify it as a text payload.",
+    "A recognized raster whose declared known image type conflicts with its magic header is rejected before upload.",
+    "Only content without a recognized binary media header is eligible for the bounded HTML/XML/SVG text-payload heuristic, while declared SVG continues through strict XML and namespace validation."
+  ],
+  "regression_tests": [
+    "electron/catalog/assetLocalization.test.ts"
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The same false rejection recurs for every recognized raster whose early EXIF, C2PA, or other binary metadata contains markup-like text, independent of provider or model.",
+    "same_class_scan": [
+      "Searched every production call to assertLocalAssetMediaBytes, assertLocalAssetTransportReady, and localizeAssetsForVendor and confirmed standard runtime and custom-call generation share this boundary.",
+      "Compared every raster magic type in electron/assets/mediaTypes.ts with the declared raster set enforced by assetLocalization and kept format-mismatch rejection intact.",
+      "Exercised both the reported PNG/C2PA SVG shape and the equivalent JPEG/EXIF HTML-text shape while retaining negative coverage for markup disguised as PNG, corrupt rasters, and malformed SVG."
+    ]
+  },
+  "prevention": {
+    "strategy": "Make recognized binary magic authoritative at the earliest shared local-asset boundary and run text-payload heuristics only when no binary media header is recognized.",
+    "artifacts": [
+      "electron/catalog/assetLocalization.ts",
+      "electron/catalog/assetLocalization.test.ts"
+    ]
+  },
+  "migration": "No persisted-data migration is required. Existing project assets remain byte-for-byte unchanged and become usable on their next preflight; no fallback or provider-specific exception is introduced.",
+  "residual_risks": [
+    "Magic-byte detection validates the registered container signature rather than fully decoding every raster; downstream decoders and providers remain responsible for detecting later structural corruption.",
+    "Unrecognized future raster formats still fail closed until added to the global media type registry."
+  ]
+}
