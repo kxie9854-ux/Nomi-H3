@@ -99,7 +99,9 @@
 | [2026-08-26-director-export-loop.md](2026-08-26-director-export-loop.md) | 导演配乐、剪辑到导出闭环 | ✅ |
 | [2026-08-26-director-skill-picker.md](2026-08-26-director-skill-picker.md) | 导演可点选 Skill 与模板 | ✅ |
 | [2026-08-26-multi-shot-identity-lock.md](2026-08-26-multi-shot-identity-lock.md) | 多镜头角色身份锁定 | ✅ |
+| [2026-08-26-mcp-dev-single-instance-fix.md](2026-08-26-mcp-dev-single-instance-fix.md) | 开发版 MCP 冷启动复用同一 Electron profile | ✅ |
 | [2026-08-29-upstream-v0.21-integration.md](2026-08-29-upstream-v0.21-integration.md) | 将 Nomi-H3 导演能力整合到 upstream v0.21.0 | ✅ |
+| [2026-08-29-reviewed-branch-integration.md](2026-08-29-reviewed-branch-integration.md) | 受审分支按依赖顺序安全合并并逐步验证 | ✅ |
 
 ## 时间轴 / 预览 / 导出
 

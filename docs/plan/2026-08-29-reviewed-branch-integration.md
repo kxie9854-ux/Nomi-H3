@@ -1,5 +1,7 @@
 # 受审分支安全集成计划
 
+状态：✅ 已实现并全门验证；本次仅更新本地 `main`，未推送远端
+
 日期：2026-08-29
 
 ## 范围
@@ -35,3 +37,11 @@
 - 每个 merge 后至少运行受影响模块的定向测试，并检查未解决冲突。
 - 最终运行 `check:filesize`、`check:tokens`、`check:i18n`、`lint:ci`、`typecheck`、`test`、`build`。
 - 最终分支包含 H3 集成、最新 raster metadata 修复与 MCP 单实例修复，且不包含异常 CSS 膨胀。
+
+## 验证结果
+
+- `codex/integrate-upstream-0.21`：合并后 13 个文件、99 项定向测试通过。
+- `codex/fix-raster-metadata-upstream`：合并后 8 个文件、159 项定向测试通过；ledger 与 Tailwind 从源重建。
+- `codex/fix-raster-metadata-validation`：未合并。H3 集成与 raster 修复均已被前两步覆盖；独有提交仅将生成 CSS 展开约 8,900 行，正式构建会从源收敛为压缩产物。
+- `codex/fix-mcp-dev-duplicate-instance`：18 项配置单测与 3 项真实进程/socket 测试通过。
+- 最终门禁：filesize、tokens、i18n、lint（89 warning，低于 98 棘轮）、typecheck、Vitest（884 文件通过、1 跳过；8374 项通过、1 跳过）、Agent runtime（151 项通过）与生产 build 全部通过。
