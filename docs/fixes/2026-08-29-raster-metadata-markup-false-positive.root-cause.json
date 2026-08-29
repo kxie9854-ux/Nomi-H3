@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "2026-08-29-raster-metadata-markup-false-positive",
   "problem_type": "valid raster asset rejected before video generation",
   "symptom": "A Codex-generated PNG was reported as HTML/XML/SVG text and rejected before AutoDL.art H3 submission even though its PNG signature and dimensions were valid.",
@@ -27,6 +27,22 @@
   "regression_tests": [
     "electron/catalog/assetLocalization.test.ts"
   ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The same false rejection recurs for every recognized raster whose early EXIF, C2PA, or other binary metadata contains markup-like text, independent of provider or model.",
+    "same_class_scan": [
+      "Searched every production call to assertLocalAssetMediaBytes, assertLocalAssetTransportReady, and localizeAssetsForVendor and confirmed standard runtime and custom-call generation share this boundary.",
+      "Compared every raster magic type in electron/assets/mediaTypes.ts with the declared raster set enforced by assetLocalization and kept format-mismatch rejection intact.",
+      "Exercised both the reported PNG/C2PA SVG shape and the equivalent JPEG/EXIF HTML-text shape while retaining negative coverage for markup disguised as PNG, corrupt rasters, and malformed SVG."
+    ]
+  },
+  "prevention": {
+    "strategy": "Make recognized binary magic authoritative at the earliest shared local-asset boundary and run text-payload heuristics only when no binary media header is recognized.",
+    "artifacts": [
+      "electron/catalog/assetLocalization.ts",
+      "electron/catalog/assetLocalization.test.ts"
+    ]
+  },
   "migration": "No persisted-data migration is required. Existing project assets remain byte-for-byte unchanged and become usable on their next preflight; no fallback or provider-specific exception is introduced.",
   "residual_risks": [
     "Magic-byte detection validates the registered container signature rather than fully decoding every raster; downstream decoders and providers remain responsible for detecting later structural corruption.",
