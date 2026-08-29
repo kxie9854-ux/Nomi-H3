@@ -6,13 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { buildToolOutcome } from '../capabilityCore/mcpToolResults'
 import { createProductionRunRepository } from './productionRunRepository'
 import { createProductionRunService } from './productionRunService'
-import { approveLatestScript, approveLatestStoryboard } from './productionRunTestHelpers'
-
-async function waitFor(check: () => boolean, timeoutMs = 5_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5))
-  if (!check()) throw new Error('waitFor timed out')
-}
+import { approveLatestScript, approveLatestStoryboard, waitForProduction as waitFor } from './productionRunTestHelpers'
 
 function makeRuntime(root: string, submissions: string[]) {
   fs.mkdirSync(path.join(root, 'assets/generated'), { recursive: true })
@@ -160,7 +154,7 @@ describe('confirm_all per-shot provider boundary', () => {
     expect(submissions).toEqual([])
 
     const restarted = makeRuntime(root, submissions).service
-    restarted.readProjection('project-1', runId)
+    await restarted.resumeUnfinishedRuns('project-1')
     await new Promise((resolve) => setTimeout(resolve, 30))
     expect(submissions).toEqual([])
     const current = restarted.readFull('project-1', runId)!
@@ -191,7 +185,7 @@ describe('confirm_all per-shot provider boundary', () => {
     expect(submissions).toEqual([])
 
     const restarted = makeRuntime(root, submissions).service
-    restarted.readProjection('project-1', runId)
+    await restarted.resumeUnfinishedRuns('project-1')
     await waitFor(() => submissions.length === 1)
     expect(submissions).toEqual([current.jobs[0].jobId])
   })

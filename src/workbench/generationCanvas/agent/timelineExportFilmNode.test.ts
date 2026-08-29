@@ -9,7 +9,7 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 
 describe('timeline export film node', () => {
   it('recognizes an existing timeline-export video', () => {
-    const nodes = [
+    const nodes: Array<Pick<GenerationCanvasNode, 'kind' | 'meta'>> = [
       { kind: 'video', meta: {} },
       { kind: 'video', meta: { outputKind: TIMELINE_EXPORT_OUTPUT_KIND } },
     ]

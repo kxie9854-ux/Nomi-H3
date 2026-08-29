@@ -10,6 +10,9 @@ import { cloneBuiltinCategories, DEFAULT_CATEGORY_ID } from './projectCategories
 import { createDefaultTimeline } from '../timeline/timelineMath'
 import { createDefaultWorkbenchDocument } from '../workbenchTypes'
 import { abandonCreationTurn } from '../creation/creationTurnController'
+import { abandonCanvasTurn } from '../generationCanvas/agent/canvasTurnController'
+import { useShotVerifyStore } from '../generationCanvas/agent/shotVerifyStore'
+import { resetTimelineAgentState } from '../timeline/agent/timelineToolCall'
 
 /**
  * Release the currently opened project's heavy renderer-only state after it has
@@ -17,7 +20,11 @@ import { abandonCreationTurn } from '../creation/creationTurnController'
  * project library should not bump persistRevision or write an empty project.
  */
 export function releaseWorkbenchProjectRuntimeState(): void {
+  resetTimelineAgentState()
   abandonCreationTurn()
+  abandonCanvasTurn()
+  // 审片结果和在途 judge 都是项目态；离开项目必须清掉并递增 requestId，旧回执随后到达也不能复活。
+  useShotVerifyStore.getState().clear()
   clearCommittedProposal()
   resetClientIdRegistry()
   clearHistory()

@@ -82,7 +82,7 @@ class ProductionHarness {
 }
 
 describe('production run MCP tools', () => {
-  it('exposes the catalog with truthful read-only annotations', async () => {
+  it('exposes the exact catalog contract with truthful read-only annotations', async () => {
     const harness = new ProductionHarness()
     const response = await harness.call(1, 'tools/list')
     const tools = (response.result as {
@@ -121,11 +121,15 @@ describe('production run MCP tools', () => {
     for (const name of listProductionPlaybookNames()) expect(playbook?.description).toContain(name)
   })
 
-  it('keeps the current README count and guide table aligned with the exported catalog', () => {
+  it('keeps the public README and guide aligned with the H3 catalog additions', () => {
     const readme = fs.readFileSync(path.join(process.cwd(), 'README.md'), 'utf8')
     const guide = fs.readFileSync(path.join(process.cwd(), 'docs/guide/capability-core-cli-mcp.md'), 'utf8')
-    expect(readme).toContain('Twenty-seven MCP tools')
-    expect(guide).toContain('27 个工具')
+    expect(readme).toContain("Nomi's MCP tools")
+    expect(guide).toContain('`nomi_group_nodes`')
+    expect(guide).toContain('`nomi_assemble_timeline`')
+    expect(guide).toContain('`nomi_freeze_nodes`')
+    expect(guide).toContain('`nomi_export_timeline`')
+    expect(guide).toContain('`nomi_save_director_skill`')
     // The public guide is updated in the release-docs task; this contract test only
     // requires the pre-existing catalog entries to remain documented while Task 4
     // adds the versioned artifact business tools.

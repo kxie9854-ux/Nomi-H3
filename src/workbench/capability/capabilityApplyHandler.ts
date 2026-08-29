@@ -1,23 +1,22 @@
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { getActiveWorkbenchProjectId } from '../project/workbenchProjectSession'
 import { useSpendConfirmStore } from '../generationCanvas/spend/spendConfirm'
+import { buildMultiShotContractView, type MultiShotGatePayload } from '../generationCanvas/spend/productionContractView'
 import { getDesktopBridge } from '../../desktop/bridge'
 import i18n from '../../i18n'
 import { runStoryboardPlanner } from '../generationCanvas/agent/runStoryboardPlanner'
 import { runDirectionPlanner } from '../generationCanvas/agent/runDirectionPlanner'
-import { sendWorkbenchAiMessage } from '../ai/workbenchAiClient'
-import { clearWorkbenchAgentSession } from '../../api/desktopClient'
-import { getAssistantModelPref } from '../ai/assistantModelPref'
-import { readWindowUrlParam } from '../windowUrlParam'
+import { productionScriptSessionKey } from '../ai/agentSessionKey'
+import { runSingleShotAgent } from '../ai/agentLoopMode'
 import { useWorkbenchStore } from '../workbenchStore'
 import { mintSpendGrant } from '../api/taskApi'
-import { runGenerationNode } from '../generationCanvas/runner/generationRunController'
+import { resolveAutonomousUploadConsent, runGenerationNode } from '../generationCanvas/runner/generationRunController'
 import { arrangeStoryboardToTimeline } from '../generationCanvas/agent/sendStoryboardToTimeline'
 import { exportTimelineToMp4 } from '../export/exportApi'
 import { ensureTimelineExportFilmNode } from '../generationCanvas/agent/timelineExportFilmNode'
 import { buildWorkspaceFileUrl } from '../explorer/workspaceFileDrag'
 import { computeTimelineDuration, timelineHasVisualClips } from '../timeline/timelineMath'
-import { verifyShotsAndReport, useShotVerifyStore, isShotVerifyEnabled } from '../generationCanvas/agent/shotVerifyStore'
+import { verifyShotsAndReport, isShotVerifyEnabled } from '../generationCanvas/agent/shotVerifyStore'
 import { isAnchorFrozen, isVisualAnchorNode } from '../generationCanvas/model/anchorBibleKeys'
 import { assertDraftFilmReady, draftFilmTimelineFromState } from '../preview/timelineSubtitleTransitionContract'
 import {
@@ -27,6 +26,8 @@ import {
 import { resolveStoryboardImageDefault, resolveStoryboardVideoDefault } from '../generationCanvas/agent/availableModels'
 import { applyCanvasToolCall, resolveCanvasToolNodeId } from '../generationCanvas/agent/applyCanvasToolCall'
 import { generationCanvasTools } from '../generationCanvas/agent/generationCanvasTools'
+import { hasGenerationBinding } from '../../../electron/capabilityCore/generationBindingGuard'
+import { handleMultiShotCanvasLandingOp } from './multiShotCanvasLanding'
 import { pickExternalGraphFocus } from '../generationCanvas/agent/externalGraphFocus'
 import { FOCUS_GENERATION_NODE_EVENT } from '../generationCanvas/nodes/nodeSizing'
 
@@ -56,6 +57,37 @@ type PlanConfirmPayload = {
   titles?: string[]
 }
 
+type GenerationGateConfirmPayload = {
+  challengeId?: string
+  projectName?: string
+  shotSummary?: string
+  model?: string
+  referenceCount?: number
+  maximumCost?: number
+  currency?: string
+  expiresAt?: string
+  /**
+   * P4 S3a — 多镜合同投影（三层管线末端）。有它 → 弹多镜确认卡（复用唯一 spendConfirm 漏斗的 contract 槽，
+   * 不造并行卡，P1）；无它 → 走今日扁平单镜卡（字节不动，单镜 E2E 是回归门）。
+   */
+  shots?: MultiShotGatePayload
+}
+
+export class LegacyPathForbiddenError extends Error {
+  readonly code = 'legacy_path_forbidden' as const
+
+  constructor() {
+    super('legacy_path_forbidden')
+    this.name = 'LegacyPathForbiddenError'
+  }
+}
+
+/** Pure renderer-side firewall for the direct legacy generation bridge. */
+export function assertLegacyGenerationPayload(payload: Record<string, unknown>): void {
+  if (!hasGenerationBinding(payload)) return
+  throw new LegacyPathForbiddenError()
+}
+
 function describeIntent(intent: string | undefined): string {
   const normalized = String(intent || '')
   if (normalized === 'image' || normalized === 'video' || normalized === 'audio' || normalized === 'text') {
@@ -71,9 +103,7 @@ async function runProductionTextPlanner(input: {
   source?: string
   outputFormat?: 'script' | 'storyboard'
 }): Promise<string> {
-  const projectId = input.projectId || readWindowUrlParam('projectId') || ''
-  const sessionKey = `nomi:production-script:${projectId || 'local'}`
-  await clearWorkbenchAgentSession(sessionKey).catch(() => {})
+  const projectId = input.projectId || ''
   const prompt = input.outputFormat === 'storyboard'
     ? [
         '你是分镜规划师。请根据下面的原分镜方案和修改要求，输出一份完整、可执行的 StoryboardPlan JSON。',
@@ -98,17 +128,15 @@ async function runProductionTextPlanner(input: {
         input.goal || '',
         '只输出稿件正文，不要解释。',
       ].join('\n')
-  const pref = getAssistantModelPref()
-  const response = await sendWorkbenchAiMessage({
+  // Ephemeral single-shot text planning never clears a UI conversation.
+  const response = await runSingleShotAgent({
+    featureKey: productionScriptSessionKey(projectId),
     prompt,
     displayPrompt: input.instruction ? '修改制作稿件' : '生成制作剧本',
-    sessionKey,
     ...(projectId ? { projectId } : {}),
     skillKey: 'workbench.production.script-planner',
     skillName: '剧本初稿规划',
-    mode: 'chat',
-    ...(pref ? { agentModelKey: pref.modelKey, agentVendorKey: pref.vendorKey } : {}),
-  }, {})
+  })
   const text = response.text?.trim()
   if (!text) throw new Error('剧本规划没有返回可审阅内容')
   return text
@@ -159,6 +187,74 @@ async function confirmSpendForAgent(info: SpendConfirmPayload): Promise<{ confir
   return { confirmed: Boolean(ok) }
 }
 
+/**
+ * One user-facing confirmation card for the semantic generation challenge.
+ *
+ * P4 S3a：payload 带 `shots`（多镜合同投影）→ 弹**多镜确认卡**（唯一 spendConfirm 漏斗的 contract 槽，
+ * 逐镜清单 + 固定 footer + 试拍/返回修改，P1 不造并行卡）；无 `shots` → 走今日扁平单镜卡（字节不动）。
+ * 试拍/返回修改经回调回传：`{ confirmed:false, trialFirst:true }`。缩到首镜 + 重封存 + 重发 gate = S4。
+ */
+async function confirmGenerationGateForAgent(info: GenerationGateConfirmPayload): Promise<{ confirmed: boolean; trialFirst?: boolean; challengeId?: string }> {
+  const withChallenge = <T extends Record<string, unknown>>(base: T) =>
+    ({ ...base, ...(info.challengeId ? { challengeId: info.challengeId } : {}) })
+
+  // ── 多镜路径（S3a 用户可见 UI）──
+  if (info.shots && Array.isArray(info.shots.shots) && info.shots.shots.length > 0) {
+    const payload: MultiShotGatePayload = {
+      ...info.shots,
+      ...(info.projectName ? { projectName: info.projectName } : {}),
+      // gate 有效期兜底进投影（payload 自带优先）。
+      ...(info.shots.expiresAt ? {} : info.expiresAt ? { expiresAt: info.expiresAt } : {}),
+    }
+    const contract = buildMultiShotContractView(payload)
+    const projectName = typeof info.projectName === 'string' ? info.projectName.trim() : ''
+    let trialFirst = false
+    let backToEdit = false
+    const ok = await useSpendConfirmStore.getState().requestConfirm({
+      kind: 'contract',
+      title: i18n.t('runtime.capability.generationGateBatchTitle'),
+      // 一句话正文：项目名 +「先出主角形象给你过目，点头后才开拍」（零内部术语）。
+      message: i18n.t('generationCommon.production.batch.body', {
+        project: projectName || i18n.t('runtime.capability.generationGateProject'),
+      }),
+      confirmLabel: i18n.t('generationCommon.production.batch.confirm', { count: payload.shots.length }),
+      source: 'agent',
+      // 倒计时时长随镜数伸缩：每镜 +8s，封顶 5 分钟（交互即暂停，见 SpendConfirmDialog）。
+      countdownMs: Math.min(300_000, 60_000 + payload.shots.length * 8_000),
+      contract,
+      onTrialFirst: () => { trialFirst = true },
+      onBackToEdit: () => { backToEdit = true },
+    })
+    // 试拍/返回修改都不算确认；只有试拍需要给主进程一个「缩到首镜重发」的信号（S4 落地）。
+    void backToEdit
+    return withChallenge({ confirmed: Boolean(ok), ...(trialFirst ? { trialFirst: true } : {}) })
+  }
+
+  // ── 单镜路径（今日形态，字节不动；单镜 E2E 是回归门）──
+  const model = typeof info.model === 'string' && info.model.trim() ? info.model.trim() : i18n.t('runtime.capability.defaultModel')
+  const shot = typeof info.shotSummary === 'string' && info.shotSummary.trim()
+    ? info.shotSummary.trim()
+    : i18n.t('runtime.capability.generationGateShotFallback')
+  const maximumCost = Number.isFinite(info.maximumCost) ? Number(info.maximumCost) : 0
+  const cost = `${typeof info.currency === 'string' ? info.currency : ''}${maximumCost}`
+  const ok = await useSpendConfirmStore.getState().requestConfirm({
+    kind: 'generation',
+    title: i18n.t('runtime.capability.generationGateTitle'),
+    message: i18n.t('runtime.capability.generationGateMessage', { model, cost, shot }),
+    confirmLabel: i18n.t('runtime.capability.confirmGenerate'),
+    source: 'agent',
+    countdownMs: 60_000,
+    details: [
+      ...(info.projectName ? [{ label: i18n.t('runtime.capability.generationGateProject'), value: info.projectName }] : []),
+      { label: i18n.t('runtime.capability.generationGateModel'), value: model },
+      ...(Number.isInteger(info.referenceCount) ? [{ label: i18n.t('runtime.capability.generationGateReferences'), value: String(info.referenceCount) }] : []),
+      { label: i18n.t('runtime.capability.generationGateCost'), value: cost },
+      ...(info.expiresAt ? [{ label: i18n.t('runtime.capability.generationGateExpires'), value: info.expiresAt }] : []),
+    ],
+  })
+  return withChallenge({ confirmed: Boolean(ok) })
+}
+
 /** 外部 MCP 方案门（Phase B）：agent 要往画布落一套节点（≥2）前弹确认卡（免费可撤），复用同一漏斗（P1）。 */
 async function confirmPlanForAgent(info: PlanConfirmPayload): Promise<{ confirmed: boolean }> {
   const count = typeof info.nodeCount === 'number' ? info.nodeCount : 0
@@ -195,8 +291,8 @@ function scoreFromDeviationActual(actual: unknown): number | undefined {
 
 /**
  * W1.5 路径②审片：production run 的 qa 阶段让渲染层对本次生成镜头判分。
- * 复用**现成的** verifyShotsAndReport（判分+对账卡+回灌闭环，内部逻辑一字不改），
- * 这里只做参数适配（run 的镜头节点 id → 它的入参）+ 从 shotVerify store 读回判决塑形回传。
+ * 复用**现成的** verifyShotsAndReport（判分+对账卡+回灌闭环），
+ * 这里只做参数适配（run 的镜头节点 id → 它的入参）+ 将本次调用返回的判决塑形回传。
  * 判决 = content 偏差（每条 kind:'content' 回指 shotNodeId + 维度 field + 档位 actual + reason）；
  * 被审但无偏差的镜头 = 过检。verify 关闭 / 无镜头 → skipped（driver 据此落「审片跳过」）。
  */
@@ -205,9 +301,9 @@ async function verifyShotsForProduction(shotNodeIds: readonly string[]): Promise
   const knownNodeIds = new Set(useGenerationCanvasStore.getState().nodes.map((node) => node.id))
   const reviewedShotIds = shotNodeIds.filter((id) => knownNodeIds.has(id))
   if (reviewedShotIds.length === 0) return { skipped: true, skipReason: '当前项目里找不到本次生成的镜头节点' }
-  // 现成闭环：内部 gather → 判分 → 写 shotVerify store（不改它）。判决从 store 读回。
-  await verifyShotsAndReport(reviewedShotIds)
-  const deviations = useShotVerifyStore.getState().deviations
+  // 现成闭环：内部 gather → 判分 → 写 shotVerify store。直接使用「本次」返回值，不能在 await
+  // 后读全局 store——同项目另一轮审片可能已经后发先至，读到的会是另一次结果。
+  const deviations = await verifyShotsAndReport(reviewedShotIds)
   const flaggedByShot = new Map<string, Array<{ dimensionName?: string; score?: number; reason?: string }>>()
   for (const deviation of deviations) {
     if (deviation.kind !== 'content' || !deviation.shotNodeId) continue
@@ -236,6 +332,7 @@ async function verifyShotsForProduction(shotNodeIds: readonly string[]): Promise
 /** 处理一条主进程转发来的能力操作。未知操作抛错（主进程会把错误透传给 agent）。 */
 export async function handleCapabilityApply(op: string, payload: unknown): Promise<unknown> {
   const data = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>
+  if (op === 'production.generate-node') assertLegacyGenerationPayload(data)
   const projectId = typeof data.projectId === 'string' ? data.projectId : ''
   const activeId = getActiveWorkbenchProjectId()
   // 画布读写**只能**作用于当前打开的项目（动 store → 必须是活动项目，否则串台）；目标≠活动 → 拒。
@@ -244,6 +341,13 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
   if (op !== 'spend.confirm' && op !== 'plan.confirm' && projectId && activeId && projectId !== activeId) {
     throw new Error(i18n.t('runtime.capability.projectChanged'))
   }
+  const plannerSnapshot = op === 'production.plan-storyboard' ? generationCanvasTools.read_canvas() : null
+  const plannerFeatureKey = `nomi:production-planner:${projectId || 'local'}:${typeof data.runId === 'string' ? data.runId : 'unbound'}:${typeof data.operationId === 'string' ? data.operationId : op}`
+
+  // P4 S5 画布落地（materialize-shots / attach-shot-result）——受上面的活动项目守卫约束（只动当前项目 store），
+  // 落点住在 multiShotCanvasLanding（保持本 handler 精简）。未处理返回 null → 继续走下方 switch。
+  const landed = await handleMultiShotCanvasLandingOp(op, data)
+  if (landed !== null) return landed
 
   switch (op) {
     case 'canvas.read-doc':
@@ -261,6 +365,8 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
     }
     case 'spend.confirm':
       return confirmSpendForAgent(data as SpendConfirmPayload)
+    case 'generation.gate.confirm':
+      return confirmGenerationGateForAgent(data as GenerationGateConfirmPayload)
     case 'plan.confirm':
       return confirmPlanForAgent(data as PlanConfirmPayload)
     case 'production.plan-directions': {
@@ -273,7 +379,7 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
       const playbook = data.playbook && typeof data.playbook === 'object' && !Array.isArray(data.playbook)
         ? data.playbook as Record<string, unknown>
         : null
-      return runDirectionPlanner({ brief, playbook })
+      return runDirectionPlanner({ brief, playbook, projectId })
     }
     case 'production.plan-script': {
       const brief = data.brief && typeof data.brief === 'object' && !Array.isArray(data.brief)
@@ -320,10 +426,16 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
         ? data.brief as Record<string, unknown>
         : {}
       const result = await runStoryboardPlanner({
+        target: 'production',
+        history: { kind: 'ephemeral' },
+        projectId,
+        featureKey: plannerFeatureKey,
+        snapshot: plannerSnapshot!,
+        canWrite: () => true,
         storyText: typeof brief.goal === 'string' ? brief.goal : '',
         skill: { key: 'brand.promo', name: '品牌宣传片' },
       })
-      const plan = useWorkbenchStore.getState().storyboardPlan
+      const plan = result.plan
       if (!plan) throw new Error(i18n.t('runtime.capability.storyboardPlanMissing'))
       return { text: result.text, plan }
     }
@@ -432,7 +544,12 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
       const retryDirective = typeof data.retryDirective === 'string' && data.retryDirective.trim()
         ? data.retryDirective.trim()
         : undefined
-      const result = await runGenerationNode(nodeId, { grantId, ...(retryDirective ? { promptSuffix: retryDirective } : {}) })
+      // 托管同意：外部 agent / MCP 驱动，没人坐在屏幕前——不能弹卡（会把整条自动化挂死在
+      // 一个没人点的对话框上），也不能默默把本地素材传到公共托管。交给同一个策略真相源判定：
+      // 策略允许 / KIE 已配 / 本地 ComfyUI → 放行；还需要问一次 → 诚实拒发，把「去配 KIE
+      // 或改托管策略」的人话回给 agent（见 resolveAutonomousUploadConsent）。
+      const assetUploadConsent = await resolveAutonomousUploadConsent(nodeId)
+      const result = await runGenerationNode(nodeId, { grantId, assetUploadConsent, ...(retryDirective ? { promptSuffix: retryDirective } : {}) })
       return {
         nodeId,
         status: 'succeeded',
@@ -443,7 +560,7 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
       const nodeIds = Array.isArray(data.nodeIds)
         ? data.nodeIds.filter((id): id is string => typeof id === 'string' && Boolean(id.trim()))
         : undefined
-      const result = arrangeStoryboardToTimeline(nodeIds?.length ? { nodeIds } : {})
+      const result = await arrangeStoryboardToTimeline(nodeIds?.length ? { nodeIds } : {})
       useWorkbenchStore.getState().setTimelinePanelCollapsed(false)
       if (!result.ok && result.total === 0) throw new Error('没有可排到时间轴的镜头')
       return {
@@ -454,7 +571,7 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
       }
     }
     case 'production.arrange': {
-      const result = arrangeStoryboardToTimeline()
+      const result = await arrangeStoryboardToTimeline()
       if (!result.ok && result.total === 0) throw new Error('没有可排片的镜头')
       const timelineContract = draftFilmTimelineFromState(useWorkbenchStore.getState().timeline)
       return {

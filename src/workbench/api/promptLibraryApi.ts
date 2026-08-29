@@ -107,7 +107,7 @@ export async function deleteUserPrompt(id: string): Promise<LibraryPrompt[]> {
   return mapUserPrompts(await desktop.promptLibrary!.userDelete(id))
 }
 
-/** 节点提示词优化用的文本大脑键(与创作助手同脑);未配文本模型返回 null。 */
+/** 节点提示词优化用的已配置文本大脑键(与创作助手同脑);未配文本模型返回 null。 */
 export async function getTextBrain(): Promise<{ vendor: string; modelKey: string } | null> {
   const desktop = requireDesktopRuntime('prompt optimize')
   const res = await desktop.promptLibrary!.textBrain()

@@ -8,28 +8,60 @@
 // 取代旧 scripts/nomi-mcp.mjs + scripts/lib/nomiClient.mjs 的 MCP 路径：无 node 依赖、入口在包内永远存在（P1）。
 import readline from 'node:readline'
 import { app, session } from 'electron'
-import { createMcpProtocol, type McpInvokeOptions } from './mcpProtocol'
+import { createMcpProtocol, MCP_REQUEST_SIGNAL, type McpInvokeOptions } from './mcpProtocol'
+import { MAX_MCP_LINE_BYTES, parseMcpStdioLine } from './mcpStdioLine'
 import { getDesktopLocale, setDesktopLocale } from '../i18n'
 import { createDiskGateway, withPreApprovedSpend, type ProjectGateway } from './gateway'
 import { readLiveInstance, type InstanceAdvertisement } from './lockfile'
 import { runTask, fetchTaskResult } from '../runtime'
 import { applySystemProxy } from '../systemProxy'
+import { appFetch } from '../appFetch'
+import { readProxyPrefs } from '../proxySettings'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
 import { startArtifactPreviewHttpServer, withAssetPreview } from '../productionRun/artifactPreviewHttpServer'
 import { resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
 import { getProjectLocationState, getWorkspaceRepositoryDeps } from '../runtimePaths'
 import { dispatchAndEnrich } from './mcpResultEnrichLive'
 import { makeShotVerifyDeps } from './shotVerifyDeps'
+import { rpcErrorFromPayload } from './mcpRpcError'
 import { importDirectorSkillMarkdown } from '../codexAppServer/directorSkills'
 import { getSettingsRoot } from '../settings/settingsRoot'
 import {
   MCP_CLIENT_ENV,
   MCP_CLIENT_PROOF_ENV,
+  ensureCapabilitySigningKey,
   resolveMcpOrigin,
   type CapabilityOriginHost,
 } from './security'
+import type { ProjectLeaseAuthority } from './projectLease'
+import type { ApprovalReceiptAuthority } from './approvalReceipt'
+import { createRuntimeMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
+import type { DispatchContext } from './dispatcher'
+import { createGenerationPlanningHandler } from './mcpGenerationTools'
+import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
+import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
+import { createCatalogModelPricingResolver, createCatalogShotPriceResolver } from '../productionRun/catalogPricingResolver'
+import type { ModuleRegistry } from './moduleRegistry'
+import { createCatalogModuleRegistry } from './moduleCatalogBootstrap'
+import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
+import { createGenerationOutputMaterializer } from './generationOutputMaterializer'
+import { readCatalog } from '../catalog/catalogStore'
+import { buildVideoModelCandidates, recommendVideoGeneration, videoArchetypeIdFromMeta } from '../shared/videoCapabilities'
 
 const productionRuns = getProductionRunService()
+
+export type McpStdioServerOptions = {
+  projectLeaseAuthority?: ProjectLeaseAuthority
+  resolveCurrentProject?: DispatchContext['resolveCurrentProject']
+  approvalReceiptAuthority?: ApprovalReceiptAuthority
+  requestGenerationGate?: DispatchContext['requestGenerationGate']
+  authorizeGeneration?: DispatchContext['authorizeGeneration']
+  generationPolicy?: McpGenerationPolicy
+  generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
+  generationPlanning?: DispatchContext['generationPlanning']
+  generationModuleRegistry?: Pick<ModuleRegistry, 'resolve'>
+  projectRevisionResolver?: (projectId: string) => number | undefined
+}
 
 /**
  * 本进程（in-Electron stdio）服务的库 → 传给 readLiveInstance 读**对应命名空间**的广告文件。与 appIntegration
@@ -65,10 +97,13 @@ async function callViaRpc(
 ): Promise<unknown> {
   const timeoutMs = transportTimeoutMs()
   const controller = new AbortController()
+  const relayAbort = () => controller.abort(options?.signal?.reason)
+  if (options?.signal?.aborted) relayAbort()
+  else options?.signal?.addEventListener('abort', relayAbort, { once: true })
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   let res: Response
   try {
-    res = await fetch(`http://127.0.0.1:${instance.port}/rpc`, {
+    res = await appFetch(`http://127.0.0.1:${instance.port}/rpc`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -92,6 +127,7 @@ async function callViaRpc(
       signal: controller.signal,
     })
   } catch (error) {
+    if (options?.signal?.aborted) throw options.signal.reason instanceof Error ? options.signal.reason : new Error('MCP request cancelled')
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(
         `Nomi 无响应（${Math.round(timeoutMs / 1000)}s 超时）——生成可能仍在后台跑，可稍后用 nomi_read_canvas 查结果。`,
@@ -101,19 +137,27 @@ async function callViaRpc(
     throw error
   } finally {
     clearTimeout(timer)
+    options?.signal?.removeEventListener('abort', relayAbort)
   }
-  const body = (await res.json()) as { ok?: boolean; error?: string; result?: unknown }
-  if (!body.ok) throw new Error(body.error || `RPC ${res.status}`)
+  const body = (await res.json()) as { ok?: boolean; error?: unknown; result?: unknown }
+  if (!body.ok) throw rpcErrorFromPayload(body, res.status)
   return body.result
 }
 
 /** 进程内调能力核：GUI 开着→转发 RPC（实时 + 应用内确认卡）；关着→进程内 dispatch（磁盘网关）。 */
-async function invoke(method: string, params: Record<string, unknown>, options?: McpInvokeOptions): Promise<unknown> {
+async function invoke(
+  method: string,
+  params: Record<string, unknown>,
+  options: McpInvokeOptions | undefined,
+  authorities: McpStdioServerOptions,
+): Promise<unknown> {
+  const requestSignal = (params as Record<PropertyKey, unknown>)[MCP_REQUEST_SIGNAL] as AbortSignal | undefined
+  const effectiveOptions = requestSignal ? { ...options, signal: requestSignal } : options
   const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
   const instance = readLiveInstance(currentLibrary())
   // GUI 开着 → RPC 转发，rpcServer 侧已做生成结果富化（缩略图/签名链），此处不再重复富化。
-  if (instance) return callViaRpc(instance, method, params, origin, options)
-  const makeGateway = options?.spendConfirmed ? makeConfirmedGateway : createDiskGateway
+  if (instance) return callViaRpc(instance, method, params, origin, effectiveOptions)
+  const makeGateway = effectiveOptions?.spendConfirmed ? makeConfirmedGateway : createDiskGateway
   // 交付②④：GUI 没开的进程内路——本进程就是 Electron（NOMI_MCP_STDIO 模式），有 nativeImage → dispatchAndEnrich
   // 里就地富化生成结果（缩略图/签名链）。收口在包装器（0a），此路与 GUI-开着的 RPC 路一样忘不了富化。
   return dispatchAndEnrich(method, params, {
@@ -122,7 +166,8 @@ async function invoke(method: string, params: Record<string, unknown>, options?:
     makeGateway,
     productionRuns,
     origin: { host: origin },
-    ...(options?.planConfirmed ? { planConfirmed: true } : {}),
+    ...authorities,
+    ...(effectiveOptions?.planConfirmed ? { planConfirmed: true } : {}),
     // 审片环（W1）：headless 路的真实 deps——judge 走 runTask 文本路（不花生成额度）、抽帧走主进程 ffmpeg、
     // 重试复用首发 grantId+同 nodeId 直发。judge 模型无可用 text 模型时 visionAvailable=false → 整体跳过。
     makeVerifyDeps: (verifyCtx) => makeShotVerifyDeps(verifyCtx),
@@ -133,7 +178,7 @@ async function invoke(method: string, params: Record<string, unknown>, options?:
 }
 
 /** 启动 stdio JSON-RPC server。main.ts 在 NOMI_MCP_STDIO 模式的 app.whenReady 后调；不开窗、不抢单实例锁。 */
-export async function startMcpStdioServer(): Promise<void> {
+export async function startMcpStdioServer(authorities: McpStdioServerOptions = {}): Promise<void> {
   // 无窗口进程：mac 别在 dock 弹图标。
   app.dock?.hide?.()
   const previewServer = await startArtifactPreviewHttpServer(
@@ -147,11 +192,11 @@ export async function startMcpStdioServer(): Promise<void> {
   console.warn = toErr
   console.debug = toErr
 
-  // 和主 app 一致设代理（vendor fetch 在代理环境才通）；失败直连兜底，不崩。
+  // 与 GUI 共用持久化偏好；失败不退出 stdio，本机 RPC 仍按明确私网规则直连。
   try {
-    await applySystemProxy(session.defaultSession)
+    await applySystemProxy(session.defaultSession, readProxyPrefs())
   } catch {
-    /* 代理设失败 → 直连兜底 */
+    /* appFetch 会阻止未经确认的公共请求，不能把初始化失败当成允许直连。 */
   }
 
   // 交付5：结果/进度文案 locale 跟随系统/App 语言。stdio 进程走的是 main.ts 的 isMcpStdio 分支，**不经** GUI
@@ -164,30 +209,134 @@ export async function startMcpStdioServer(): Promise<void> {
     /* 取不到系统 locale → 保持 zh-CN 缺省 */
   }
 
+  const providerBootstrap = createGenerationProviderBootstrap()
+  const outputMaterializer = createGenerationOutputMaterializer()
+  const generationRegistry = authorities.generationModuleRegistry ?? createCatalogModuleRegistry(undefined, { readinessByProvider: providerBootstrap.readinessByProvider })
+  const videoModelCandidates = buildVideoModelCandidates(readCatalog().models
+    .filter((model) => model.enabled && model.kind === 'video')
+    .map((model) => ({
+      provider: model.vendorKey,
+      modelKey: model.modelKey,
+      label: model.labelZh,
+      archetypeId: videoArchetypeIdFromMeta(model.meta),
+      parameterControls: model.onboarding?.fields?.map((field) => ({
+        key: field.key,
+        label: field.displayName,
+        type: field.type,
+        options: (field.options ?? []).map((option) => ({ value: option.value, label: option.label })),
+        ...(field.default === undefined ? {} : { defaultValue: field.default }),
+      })),
+    })))
+  // P4 S2: derive real per-shot prices from the live catalog pricing (readCatalog reflects user edits;
+  // resolve lazily so a mid-session pricing change is picked up). Preview/gate use the model-pricing
+  // resolver; the submission seam uses the contract→ShotPrice resolver for its ledger amounts.
+  const resolveModelPricing = (providerId: string, modelId: string) => createCatalogModelPricingResolver(readCatalog().models)(providerId, modelId)
+  const resolveShotPrice = (contract: Parameters<ReturnType<typeof createCatalogShotPriceResolver>>[0]) => createCatalogShotPriceResolver(readCatalog().models)(contract)
+  const generationPlanning = authorities.generationPlanning
+    ?? createGenerationPlanningHandler({
+      registry: generationRegistry,
+      operations: createProductionGenerationOperationStore(productionRuns),
+      videoModelCandidates,
+      recommendVideoGeneration,
+      resolveModelPricing,
+      providerReadiness: ({ providerId }) => providerBootstrap.readinessByProvider[providerId] ?? { providerReady: false, missingForSubmit: ['configured_provider'] },
+      start: async (operation, lease) => {
+        const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)
+        const projectRoot = resolveWorkspaceProjectDir(lease.projectId, getWorkspaceRepositoryDeps())
+        if (!provider || !projectRoot || !operation.contract) return { operationId: operation.operationId, state: operation.state, nextAction: 'provider_not_configured' }
+        return createProductionGenerationSubmission({
+          repository: productionRuns.repository,
+          projectRoot,
+          immutableProjectUuid: lease.immutableProjectUuid,
+          projectGeneration: lease.projectGeneration,
+          intentMacKey: ensureCapabilitySigningKey('generation-intent'),
+          provider,
+          resolveShotPrice,
+          materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
+        }).start({ projectId: lease.projectId, operationId: operation.operationId })
+      },
+      reconcile: async (operation, outcome, lease) => {
+        if (outcome === 'not_found') return { operationId: operation.operationId, outcome, nextAction: 'manual_review' }
+        const provider = providerBootstrap.providers.find((candidate) => candidate.providerId === operation.contract?.providerId)
+        const projectRoot = resolveWorkspaceProjectDir(lease.projectId, getWorkspaceRepositoryDeps())
+        if (!provider || !projectRoot || !operation.contract) return { operationId: operation.operationId, outcome, nextAction: 'manual_review' }
+        if (!provider.query || !provider.capabilities.query) return { operationId: operation.operationId, outcome, nextAction: 'manual_review', recoveryNotice: '该供应商没有可用的任务查询；请到供应商核对。' }
+        const submission = createProductionGenerationSubmission({
+          repository: productionRuns.repository,
+          projectRoot,
+          immutableProjectUuid: lease.immutableProjectUuid,
+          projectGeneration: lease.projectGeneration,
+          intentMacKey: ensureCapabilitySigningKey('generation-intent'),
+          provider,
+          resolveShotPrice,
+          materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
+        })
+        try {
+          const polled = await submission.poll({ projectId: lease.projectId, operationId: operation.operationId })
+          return polled.nextAction === 'materialize'
+            ? await submission.materialize({ projectId: lease.projectId, operationId: operation.operationId })
+            : polled
+        } catch (error) {
+          const code = (error as { code?: unknown })?.code
+          if (code === 'provider_materialization_unsupported' || code === 'materialization_failed') return { operationId: operation.operationId, outcome, nextAction: 'manual_review', recoveryNotice: '供应商任务已完成，但结果还没有安全落到 Nomi 项目；请到供应商核对或稍后重试。' }
+          throw error
+        }
+      },
+    })
+  const generationPolicy = authorities.generationPolicy ?? createRuntimeMcpGenerationPolicy()
   const protocol = createMcpProtocol({
     send: (message) => process.stdout.write(JSON.stringify(message) + '\n'),
-    invoke,
+    invoke: (method, params, options) => invoke(method, params, options, { ...authorities, generationPlanning, generationPolicy }),
     isAppOpen: () => Boolean(readLiveInstance(currentLibrary())),
+    getAuthenticatedClient: () => {
+      const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
+      return origin === 'external' || origin === 'nomi' ? null : origin
+    },
+    confirmGenerationInNomi: async (challenge) => {
+      const challengeToken = challenge.handoff && typeof challenge.handoff.challengeToken === 'string'
+        ? challenge.handoff.challengeToken
+        : ''
+      const instance = readLiveInstance(currentLibrary())
+      if (!challengeToken || !instance) return { confirmed: false }
+      const origin = resolveMcpOrigin(process.env[MCP_CLIENT_ENV], process.env[MCP_CLIENT_PROOF_ENV])
+      const result = await callViaRpc(instance, 'nomi_confirm_generation_gate', { challengeToken }, origin)
+      const typed = result as { confirmed?: boolean; receiptId?: string; receiptToken?: string }
+      return { confirmed: typed.confirmed === true, ...(typed.receiptId ? { receiptId: typed.receiptId } : {}), ...(typed.receiptToken ? { receiptToken: typed.receiptToken } : {}) }
+    },
     getLocale: () => getDesktopLocale(),
   })
 
+  // 行长上限：stdin 是**不可信输入**（本地客户端行为异常或被劫持时，一条无换行的超长流能把主进程
+  // 内存吃满）。4 MiB 够装带 base64 参考图的 tools/call，又把最坏内存钉死。readline 的 maxLength 会
+  // 在超限时抛 'error' 而不是静默截断，故我们自己按字节判——截断的半条 JSON 解析出来可能是**另一条
+  // 合法请求**，那比丢弃危险得多。
   const rl = readline.createInterface({ input: process.stdin })
   rl.on('line', (line) => {
-    const trimmed = line.trim()
-    if (!trimmed) return
-    let message: unknown
-    try {
-      message = JSON.parse(trimmed)
-    } catch {
-      return // 非 JSON 行忽略（不崩）
+    const parsed = parseMcpStdioLine(line)
+    if (parsed.kind === 'blank') return
+    if (parsed.kind === 'oversized') {
+      // 超长行整条丢弃。无从可靠取 id（正是因为它可能根本不是一条完整 JSON）→ 按规范只记日志。
+      console.warn(`[nomi-mcp] dropped an oversized stdin line (> ${MAX_MCP_LINE_BYTES} bytes)`)
+      return
     }
-    protocol.handleIncoming(message as Parameters<typeof protocol.handleIncoming>[0])
+    if (parsed.kind === 'parse-error') {
+      // 非 JSON 行：旧行为是静默丢弃 → 客户端永远等不到响应也不知道为什么。按 JSON-RPC 标准回
+      // -32700 Parse error。此时无从得知 id（正是解析失败），按规范用 null id。
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }) + '\n')
+      return
+    }
+    protocol.handleIncoming(parsed.value as Parameters<typeof protocol.handleIncoming>[0])
   })
   // 客户端关闭 stdin（断连/退出）→ 我们也退出，不留孤儿进程。
+  // **退出前先中止在飞工作**：否则客户端断连后，已经发出去的付费生成仍在后台跑到底（真金风险，
+  // 审计 2026-08-25）。中止只切断我们这侧的等待；已提交给供应商的任务走既有 reconcile 语义收敛，
+  // 这里不新增重试、也不重复提交。
   let closing = false
   const close = () => {
     if (closing) return
     closing = true
+    const cancelled = protocol.cancelAllInFlight('stdio disconnected')
+    if (cancelled > 0) console.warn(`[nomi-mcp] cancelled ${cancelled} in-flight request(s) on disconnect`)
     void previewServer.close().finally(() => app.exit(0))
   }
   rl.on('close', close)

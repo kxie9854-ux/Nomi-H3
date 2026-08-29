@@ -170,6 +170,7 @@ export default function ProjectLibraryPage({
         <button
           type="button"
           onClick={onOpenModelCatalog}
+          data-testid="open-model-settings"
           className={cn(
             'inline-flex items-center gap-1.5 h-7 px-2 rounded-pill border-0 bg-transparent cursor-pointer font-inherit',
             'text-caption text-nomi-ink-60 transition-colors hover:text-nomi-ink',
@@ -286,6 +287,7 @@ export default function ProjectLibraryPage({
               <button
                 type="button"
                 onClick={onOpenModelCatalog}
+                data-testid="open-model-settings"
                 className={cn(
                   'inline-flex items-center h-8 px-4 rounded-pill border-0 cursor-pointer font-inherit',
                   'bg-nomi-ink text-nomi-paper text-body-sm font-medium transition-colors hover:bg-nomi-accent',
@@ -338,7 +340,11 @@ export default function ProjectLibraryPage({
               title={
                 normalizedQuery
                   ? t('library.noMatchNamed', { query: query.trim() })
-                  : t('library.noProjectsInCategory')
+                  : sourceFilter !== 'all'
+                    ? t('library.noProjectsInSource')
+                    : // 首次空库（无搜索、来源=全部、零项目）：给行动指引指向正上方的「新建空白项目」卡，
+                      // 别用「这个分类下还没有项目」的系统腔（首屏没有分类概念，2026-08-25 走查 F1）。
+                      t('library.firstEmpty')
               }
               action={
                 normalizedQuery ? (

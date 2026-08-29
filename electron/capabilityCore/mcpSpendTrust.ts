@@ -77,3 +77,13 @@ export function spendConfirmElicit(costHint: string, reask: boolean): {
     description: `确认后将消耗模型额度生成；取消则不生成、不花费。${reviewNote}${scope}`,
   }
 }
+
+export function spendConfirmRequest(costHint: string, reask: boolean, scopeKey: string) {
+  return {
+    ...spendConfirmElicit(costHint, reask),
+    meta: {
+      nomiSpendApprovalScope: scopeKey,
+      nomiSpendApprovalPasses: SPEND_TRUST_REASK_AFTER,
+    },
+  }
+}

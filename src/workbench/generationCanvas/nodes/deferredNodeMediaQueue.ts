@@ -384,7 +384,7 @@ export function useDeferredNodeMediaSrc({
 
   const markLoaded = React.useCallback(() => {
     const loadedSrc = activeSrcRef.current
-    if (!loadedSrc || loadedSrc !== src || stateRef.current !== 'loading') return false
+    if (!loadedSrc || loadedSrc !== src || (stateRef.current !== 'loading' && stateRef.current !== 'timeout')) return false
     setReadySrc(loadedSrc)
     transitionTo('ready')
     cancelLoadTimeout()

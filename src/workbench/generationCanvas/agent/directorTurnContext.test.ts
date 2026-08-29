@@ -27,7 +27,7 @@ describe('buildDirectorCanvasContext', () => {
       title: '晨光花园里的小猫',
       prompt: 'orange kitten',
       status: 'success',
-      result: { id: 'r1', type: 'video', url: 'nomi-local://asset/cat.mp4' },
+      result: { id: 'r1', type: 'video', url: 'nomi-local://asset/cat.mp4', createdAt: 1 },
     })
     const text = buildDirectorCanvasContext(
       { nodes: [selected], edges: [], selectedNodeIds: ['node-cat'] },
@@ -43,13 +43,13 @@ describe('buildDirectorCanvasContext', () => {
       id: 'ff',
       kind: 'image',
       title: '首帧',
-      result: { id: 'r1', type: 'image', url: 'nomi-local://first.jpg' },
+      result: { id: 'r1', type: 'image', url: 'nomi-local://first.jpg', createdAt: 1 },
     })
     const last = node({
       id: 'lf',
       kind: 'image',
       title: '尾帧',
-      result: { id: 'r2', type: 'image', url: 'nomi-local://last.jpg' },
+      result: { id: 'r2', type: 'image', url: 'nomi-local://last.jpg', createdAt: 2 },
     })
     const text = buildDirectorCanvasContext(
       { nodes: [first, last], edges: [], selectedNodeIds: ['ff', 'lf'] },

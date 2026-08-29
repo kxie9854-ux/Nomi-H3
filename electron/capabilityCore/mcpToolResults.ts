@@ -7,9 +7,13 @@
 // 纯逻辑、不碰 electron —— 与 mcpProtocol 同边界，可裸 node 单测。
 
 import { ACTIVE_JOB_STATUSES } from '../productionRun/productionRunControl'
+import { isAnchorCheckpointGate } from '../productionRun/anchorCheckpoint'
 import { stripInternalEnrichFields } from './mcpResultEnrich'
+import { projectGenerationRecovery } from './generationRecoveryProjection'
+
+export { buildToolErrorOutcome } from './mcpToolErrorResults'
 import { safeArtifactValue } from './mcpArtifactSanitize'
-import { buildDirectorSaveSkillOutcome, buildTimelineAssembleOutcome, buildTimelineExportOutcome } from './mcpTimelineToolResults'
+import { buildCanvasGroupOutcome, buildDirectorSaveSkillOutcome, buildTimelineAssembleOutcome, buildTimelineExportOutcome } from './mcpTimelineToolResults'
 export { sanitizeArtifactResource } from './mcpArtifactSanitize'
 
 export type ResultLocale = 'zh-CN' | 'en'
@@ -39,25 +43,6 @@ const RUN_STATUS_HINT: Record<string, { zh: string; en: string; nextZh: string; 
   needs_attention: { zh: '需要处理', en: 'needs attention', nextZh: '有任务卡住了，看错误详情选恢复动作', nextEn: 'A job is stuck; check the error details for recovery actions', action: 'recover' },
   completed: { zh: '已完成', en: 'completed', nextZh: '产物已保存到项目，可在 Nomi 里查看', nextEn: 'Artifacts are saved to the project; open them in Nomi', action: 'open_in_nomi' },
   cancelled: { zh: '已取消', en: 'cancelled', nextZh: '未提交的任务不计费', nextEn: 'Unsubmitted jobs are not charged', action: 'none' },
-}
-
-/** A6 已知错误码 → 人话原因 + 恢复动作（只登记确证的码，不编造；未知码原样透传）。 */
-const ERROR_HINT: Record<string, { zh: string; en: string; recover: Array<{ zh: string; en: string }> }> = {
-  asset_not_localized: {
-    zh: '参考素材还没落到本地，生成端拿不到它',
-    en: 'A referenced asset is not localized yet, so the generator cannot read it',
-    recover: [
-      { zh: '在 Nomi 里打开该节点让素材完成本地化后重试', en: 'Open the node in Nomi to finish localizing the asset, then retry' },
-    ],
-  },
-  renderer_or_provider_unknown: {
-    zh: '找不到能执行这次生成的渲染器或供应商配置',
-    en: 'No renderer or provider configuration can execute this generation',
-    recover: [
-      { zh: '用 nomi_list_models 核对可用模型后换一个', en: 'Check available models with nomi_list_models and switch' },
-      { zh: '在 Nomi 设置里补齐该供应商的接入', en: 'Complete the provider setup in Nomi settings' },
-    ],
-  },
 }
 
 function str(value: unknown): string {
@@ -193,6 +178,16 @@ function waitingSampleGateId(value: Record<string, unknown>): string | null {
   const gates = Array.isArray(value.gates) ? (value.gates as Array<Record<string, unknown>>) : []
   const gate = gates.find((item) => str(item.gateId).startsWith('gate-sample-') && str(item.status) === 'waiting')
   return gate ? str(gate.gateId) : null
+}
+
+/** P4 §3.2：waiting 的锚定妆照检查点（定妆照就绪，等真人过目后开拍镜头批）。 */
+function waitingAnchorCheckpointGate(value: Record<string, unknown>): { gateId: string; jobIds: string[] } | null {
+  const gates = Array.isArray(value.gates) ? (value.gates as Array<Record<string, unknown>>) : []
+  const gate = gates.find((item) => isAnchorCheckpointGate({ gateId: str(item.gateId), scope: str(item.scope) })
+    && str(item.status) === 'waiting')
+  if (!gate) return null
+  const jobIds = Array.isArray(gate.jobIds) ? gate.jobIds.map((id) => str(id)).filter(Boolean) : []
+  return { gateId: str(gate.gateId), jobIds }
 }
 
 function waitingShotGate(value: Record<string, unknown>): {
@@ -441,6 +436,16 @@ export function buildToolOutcome(
       L(ctx, '样片就绪：首镜已生成，先过目再批量剩余镜头。', 'Sample ready: the first shot is generated — review it before the full batch.'),
       L(ctx, '  满意就批准继续；想改风格就否决（会暂停，改提示词后可继续）。', '  Approve to continue, or reject to pause and adjust the prompt.'),
     ] : []
+    // P4 §3.2：定妆照检查点在等 → 指路「先看图再表态」（定妆照 = 本门 jobIds 对应的 artifacts）。
+    const checkpoint = waitingAnchorCheckpointGate(value)
+    const checkpointLines = checkpoint ? [
+      L(ctx,
+        '定妆照就绪：先过目再开拍。用 nomi_get_artifact 逐张预览本门 jobIds 对应的 artifacts，展示给用户看。',
+        'Character stills ready: review before shooting. Preview the artifacts matching this gate\'s jobIds via nomi_get_artifact and show them to the user.'),
+      L(ctx,
+        `  满意 → nomi_decide_gate approved 开拍剩余镜头（在已批预算内，不新增授权）；不满意 → rejected 停在检查点，可重出形象。门 id：${checkpoint.gateId}`,
+        `  Happy → nomi_decide_gate approved starts the remaining shots (within the approved budget, no new authorization); otherwise rejected keeps the batch parked for a re-shoot. Gate id: ${checkpoint.gateId}`),
+    ] : []
     const shotGate = waitingShotGate(value)
     const shotTarget = shotGate ? [shotGate.provider, shotGate.model].filter(Boolean).join(' · ') : ''
     const shotLines = shotGate ? [
@@ -451,6 +456,21 @@ export function buildToolOutcome(
         `  ${shotTarget ? `${shotTarget}；` : ''}批准前不会调用供应商，也不会产生这镜的费用。请回 Nomi 决定。`,
         `  ${shotTarget ? `${shotTarget}; ` : ''}no provider call or charge occurs before approval. Decide in Nomi.`),
     ] : []
+    const jobsArr = Array.isArray(value.jobs) ? (value.jobs as Array<Record<string, unknown>>) : []
+    const unknownJobs = jobsArr.filter((job) => str(job.status) === 'submission_unknown')
+    const recoveryProfile = value.providerCapabilityProfile === 'full_recovery' || value.providerCapabilityProfile === 'observe_only'
+      ? value.providerCapabilityProfile
+      : 'submit_only'
+    const recovery = unknownJobs.length
+      ? projectGenerationRecovery({ state: 'submission_unknown', profile: recoveryProfile, locale: ctx.locale })
+      : undefined
+    const reconciliationLines = unknownJobs.length ? [
+      L(ctx,
+        `有 ${unknownJobs.length} 个任务的供应商状态还没核实；正在等待对账，Nomi 不会自动重提。`,
+        `${unknownJobs.length} job(s) have an unverified provider state; waiting for reconciliation and no automatic resubmit.`,
+      ),
+      `  ${recovery?.message}`,
+    ] : []
     // B3：状态转述带当前信任档位（非默认时才占一行，避免默认档噪音）。
     const trustLevel = str(value.trustLevel) || 'key_confirm'
     const text = [
@@ -460,7 +480,9 @@ export function buildToolOutcome(
       preview.url ? `${L(ctx, '最新预览', 'Latest preview')} ${str(preview.url)}（${str(preview.expiresAt) || L(ctx, '限时', 'expiring')}）` : null,
       ...candidateLines,
       ...sampleLines,
+      ...checkpointLines,
       ...shotLines,
+      ...reconciliationLines,
       hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
     ].filter(Boolean).join('\n') + openLine
     return {
@@ -471,16 +493,22 @@ export function buildToolOutcome(
         latestPreviewUrl: str(preview.url) || null,
         ...(direction && direction.candidates.length ? { directionGateId: direction.gateId, directionCandidates: direction.candidates } : {}),
         ...(sampleGateId ? { sampleGateId } : {}),
+        ...(checkpoint ? { anchorCheckpointGateId: checkpoint.gateId, anchorCheckpointJobIds: checkpoint.jobIds } : {}),
         ...(shotGate ? { shotGateId: shotGate.gateId, shotJobId: shotGate.jobId } : {}),
-        nextActions: direction && direction.candidates.length
+        ...(recovery ? { recovery } : {}),
+        nextActions: recovery
+          ? ['wait_reconciliation']
+          : direction && direction.candidates.length
           ? ['decide_direction']
           : sampleGateId
             ? ['review_sample']
-            : shotGate
-              ? ['review_shot_in_nomi']
-              : hint
-                ? [hint.action]
-                : [],
+            : checkpoint
+              ? ['review_anchor_checkpoint']
+              : shotGate
+                ? ['review_shot_in_nomi']
+                : hint
+                  ? [hint.action]
+                  : [],
         openInNomi: openInNomi || null,
       },
     }
@@ -636,16 +664,23 @@ export function buildToolOutcome(
       ? gateCandidates.find((candidate) => candidate.key === chosenKey)
       : undefined
     const isSample = gateId.startsWith('gate-sample-')
+    // P4 §3.2：定妆照检查点回执——批准即批次自动续跑（service 钩子已重踢 scheduler，agent 不用再做别的）。
+    const isCheckpoint = gateId.startsWith('gate-anchor-checkpoint-')
     const head = decision === 'approved'
       ? (isDirection ? L(ctx, '✓ 方向已定', '✓ Direction settled')
         : isSample ? L(ctx, '✓ 样片通过，批量生成剩余镜头', '✓ Sample approved — generating the rest')
+        : isCheckpoint ? L(ctx, '✓ 定妆照通过，开拍镜头批次', '✓ Stills approved — shooting the shot batch')
         : L(ctx, '✓ 已批准', '✓ Approved'))
-      : (isSample ? L(ctx, '✓ 样片打回，已暂停', '✓ Sample rejected — run paused') : L(ctx, '✓ 已否决', '✓ Rejected'))
+      : (isSample ? L(ctx, '✓ 样片打回，已暂停', '✓ Sample rejected — run paused')
+        : isCheckpoint ? L(ctx, '✓ 定妆照打回，批次停在检查点', '✓ Stills rejected — batch parked at the checkpoint')
+        : L(ctx, '✓ 已否决', '✓ Rejected'))
     const text = [
       `${head} · ${gateId}`,
       chosen ? `  ${chosen.title} —— ${chosen.oneLiner}` : null,
       decision === 'rejected' && isDirection ? L(ctx, '方向未变，可重新给方案或让用户自己描述。', 'Direction unchanged; propose again or let the user describe their own.') : null,
       decision === 'rejected' && isSample ? L(ctx, '已生成的样片保留；改提示词后从这里继续，不重付已花的。', 'The generated sample is kept; adjust the prompt and resume — no double charge.') : null,
+      decision === 'approved' && isCheckpoint ? L(ctx, '剩余镜头已自动开拍（已批预算内），用 nomi_get_run 看进度。', 'The remaining shots are already generating (within the approved budget); track with nomi_get_run.') : null,
+      decision === 'rejected' && isCheckpoint ? L(ctx, '定妆照保留、镜头不开拍不扣费；重出形象后会再开一道检查点。', 'The stills are kept; no shot generates or charges. Re-shoot the look and a fresh checkpoint opens.') : null,
       hint ? L(ctx, hint.nextZh, hint.nextEn) : null,
     ].filter(Boolean).join('\n') + openLine
     return {
@@ -661,25 +696,7 @@ export function buildToolOutcome(
   }
 
   if (toolName === 'nomi_group_nodes') {
-    const group = rec(value.group)
-    const grouped = Array.isArray(group.nodeIds) ? group.nodeIds.length : 0
-    const skipped = Array.isArray(value.skipped) ? value.skipped.length : 0
-    const created = value.created === true
-    const name = str(group.name) || str(args.name)
-    const text = group.id
-      ? [
-          `✓ ${created ? L(ctx, '画布分组已创建', 'Canvas group created') : L(ctx, '已复用现有画布分组', 'Existing canvas group reused')} · ${name} · ${grouped} ${L(ctx, '个节点', 'nodes')}`,
-          skipped ? L(ctx, `跳过 ${skipped} 个节点（不存在或分类不同）`, `Skipped ${skipped} node(s) (missing or in another category)`) : null,
-        ].filter(Boolean).join('\n')
-      : `✗ ${L(ctx, '没有创建分组：至少需要 2 个同分类的现有节点', 'No group created: at least 2 existing nodes from the same category are required')}`
-    return {
-      text: text + openLine,
-      outcome: {
-        kind: 'canvas_group', projectId, groupId: str(group.id) || null, name, grouped, skipped, created,
-        nextActions: group.id ? ['open_in_nomi'] : ['fix_node_selection'],
-        openInNomi: projectId ? `nomi://project/${projectId}` : null,
-      },
-    }
+    return buildCanvasGroupOutcome(value, args, ctx.locale, projectId, openLine)
   }
 
   if (toolName === 'nomi_assemble_timeline') {
@@ -765,29 +782,4 @@ export function buildProgressStartMessage(
       .filter(Boolean).join(' · ')
   }
   return null
-}
-
-/** A6 · 错误 → 人话原因 + 恢复动作 + 诊断信息（未知错误不编内容，原样透传 message）。 */
-export function buildToolErrorOutcome(
-  toolName: string,
-  error: unknown,
-  locale: ResultLocale = 'zh-CN',
-): { text: string; outcome: Record<string, unknown> } {
-  const ctx: Ctx = { locale }
-  const message = error instanceof Error ? error.message : String(error)
-  const code = Object.keys(ERROR_HINT).find((key) => message.includes(key)) || null
-  const hint = code ? ERROR_HINT[code] : null
-  const recover = hint ? hint.recover.map((r) => L(ctx, r.zh, r.en)) : []
-  const text = [
-    `✗ ${hint ? L(ctx, hint.zh, hint.en) : message}`,
-    code ? `${L(ctx, '诊断', 'diagnostic')} ${code}` : null,
-    ...recover.map((line, index) => `${index + 1}. ${line}`),
-    !hint && toolName === 'nomi_generate'
-      ? L(ctx, '已完成的内容安全；确认模型服务与 API Key 后可重试。', 'Finished work is safe; verify the model service and API key, then retry.')
-      : null,
-  ].filter(Boolean).join('\n')
-  return {
-    text,
-    outcome: { kind: 'error', tool: toolName, errorCode: code, message, recoveryActions: recover },
-  }
 }

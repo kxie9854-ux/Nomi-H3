@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "2026-08-29-codex-ipc-sender-binding",
+  "problem_type": "untrusted renderer access to Codex IPC",
+  "symptom": "The embedded Codex IPC handlers accepted requests from any Electron webContents, including calls that could start login, send director prompts, import skills, or approve a spend elicitation.",
+  "direct_cause": "The Nomi-H3 Codex IPC module registered nine ipcMain handlers without invoking the repository's shared sender trust guard.",
+  "class_root": "The fork added a new privileged IPC surface outside the upstream invariant that every renderer-to-main registration authenticates its sender before parsing payloads or causing effects.",
+  "affected_population": [
+    "Users who open any untrusted or compromised renderer content in the Electron process",
+    "Projects using the embedded Codex director, skill import, or spend-confirmation bridge"
+  ],
+  "scope_paths": [
+    "electron/codexAppServer/ipc.ts"
+  ],
+  "entry_points": [
+    "All nomi:codex:* ipcMain.handle registrations"
+  ],
+  "internal_only_reason": "The fix applies Nomi's existing Electron sender-authentication boundary and does not change any third-party API or dependency contract.",
+  "invariants": [
+    "Every nomi:codex:* handler calls assertTrustedSender before reading arguments or causing side effects.",
+    "Login URL opening, skill import, prompt dispatch, interrupt, and elicitation response cannot be triggered by an untrusted webContents.",
+    "The repository-wide IPC sender-binding ratchet remains at its existing baseline or lower."
+  ],
+  "regression_tests": [
+    "electron/codexAppServer/directorHistoryIpc.test.ts"
+  ],
+  "migration": "No persisted data migration. Trusted Nomi renderer calls retain the same channel names and payloads; untrusted senders now fail closed.",
+  "residual_risks": [
+    "The ten legacy unguarded IPC registrations outside this module remain tracked by the existing ratchet baseline and are not expanded by this change."
+  ]
+}

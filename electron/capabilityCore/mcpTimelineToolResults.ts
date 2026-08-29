@@ -9,6 +9,38 @@ export type TimelineToolOutcome = {
   outcome: Record<string, unknown>
 }
 
+export function buildCanvasGroupOutcome(
+  value: Record<string, unknown>,
+  args: Record<string, unknown>,
+  locale: Locale,
+  projectId: string,
+  openLine: string,
+): TimelineToolOutcome {
+  const ctx: Ctx = { locale }
+  const group = value.group && typeof value.group === 'object' && !Array.isArray(value.group)
+    ? value.group as Record<string, unknown>
+    : {}
+  const grouped = Array.isArray(group.nodeIds) ? group.nodeIds.length : 0
+  const skipped = Array.isArray(value.skipped) ? value.skipped.length : 0
+  const created = value.created === true
+  const name = typeof group.name === 'string' ? group.name : (typeof args.name === 'string' ? args.name : '')
+  const groupId = typeof group.id === 'string' ? group.id : ''
+  const text = groupId
+    ? [
+        `✓ ${created ? L(ctx, '画布分组已创建', 'Canvas group created') : L(ctx, '已复用现有画布分组', 'Existing canvas group reused')} · ${name} · ${grouped} ${L(ctx, '个节点', 'nodes')}`,
+        skipped ? L(ctx, `跳过 ${skipped} 个节点（不存在或分类不同）`, `Skipped ${skipped} node(s) (missing or in another category)`) : null,
+      ].filter(Boolean).join('\n')
+    : `✗ ${L(ctx, '没有创建分组：至少需要 2 个同分类的现有节点', 'No group created: at least 2 existing nodes from the same category are required')}`
+  return {
+    text: text + openLine,
+    outcome: {
+      kind: 'canvas_group', projectId, groupId: groupId || null, name, grouped, skipped, created,
+      nextActions: groupId ? ['open_in_nomi'] : ['fix_node_selection'],
+      openInNomi: projectId ? `nomi://project/${projectId}` : null,
+    },
+  }
+}
+
 export function buildTimelineAssembleOutcome(
   value: Record<string, unknown>,
   locale: Locale,

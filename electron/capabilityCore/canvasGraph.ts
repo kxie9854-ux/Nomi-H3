@@ -11,7 +11,7 @@
 // per-kind 几何/语义注入自 `nodeKindDomain`（由等价测试钉死 === src registry）。故 MCP 建的节点与
 // UI 建的节点**字段级等价**（meta/categoryId/shotIndex/size 全齐），不再是缺字段的「二等公民」。
 import { randomUUID } from 'node:crypto'
-import { ANCHOR_META_KEYS, isVisualAnchorKind } from './anchorBible'
+import { ANCHOR_META_KEYS, isAnchorFrozen, isVisualAnchorKind } from './anchorBible'
 import { plainTextToTiptapDoc } from './plainTextDoc'
 import { buildCanvasNodes, type CanvasNodeFactorySpec, type CanvasNodeRecord, type NodeFactoryDeps } from './canvasNodeFactory'
 import { layoutBatchWith, type NodeBox } from './canvasNodeLayout'
@@ -399,14 +399,6 @@ function nodeResultUrl(node: CanvasNode): string {
   return typeof result?.url === 'string' ? result.url.trim() : ''
 }
 
-function isAlreadyFrozen(node: CanvasNode): boolean {
-  const meta = node.meta && typeof node.meta === 'object' ? node.meta : null
-  const mark = meta?.[ANCHOR_META_KEYS.frozen]
-  if (!mark || typeof mark !== 'object' || Array.isArray(mark)) return false
-  const at = (mark as { at?: unknown }).at
-  return typeof at === 'number' && Number.isFinite(at) && at > 0
-}
-
 /** 给已出图的角色/场景/道具卡打冻结标记。幂等。非锚或没图则跳过。 */
 export function freezeNodes(snapshot: CanvasSnapshot, nodeIds: string[], frozenAt = Date.now()): FreezeNodesResult {
   const wanted = Array.from(new Set(nodeIds.map((id) => String(id || '').trim()).filter(Boolean)))
@@ -424,7 +416,7 @@ export function freezeNodes(snapshot: CanvasSnapshot, nodeIds: string[], frozenA
       skipped.push({ nodeId, reason: '只有角色/场景/道具卡能冻结定妆' })
       continue
     }
-    if (isAlreadyFrozen(node)) {
+    if (isAnchorFrozen(node)) {
       frozen.push(nodeId)
       continue
     }

@@ -50,7 +50,42 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
       "edit": "image_edit"
     }
   },
+  "kie-seedream-5-pro": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image",
+      "edit": "image_edit"
+    }
+  },
+  "kie-seedream-5-lite": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image",
+      "edit": "image_edit"
+    }
+  },
+  "nano-banana-2": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image",
+      "edit": "image_edit"
+    }
+  },
+  "nano-banana-2-lite": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image",
+      "edit": "image_edit"
+    }
+  },
   "nano-banana": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image",
+      "edit": "image_edit"
+    }
+  },
+  "flux-2-pro": {
     "defaultModeId": "t2i",
     "modes": {
       "t2i": "text_to_image",
@@ -62,6 +97,13 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
     "modes": {
       "t2v": "text_to_video",
       "i2v": "image_to_video"
+    }
+  },
+  "qwen-image-3": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image",
+      "edit": "image_edit"
     }
   },
   "qwen-image": {
@@ -103,6 +145,24 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
     "modes": {
       "t2v": "text_to_video",
       "i2v": "image_to_video",
+      "ref": "image_to_video"
+    }
+  },
+  "wan-3.0": {
+    "defaultModeId": "t2v",
+    "modes": {
+      "t2v": "text_to_video",
+      "first": "image_to_video",
+      "firstlast": "image_to_video",
+      "ref": "image_to_video"
+    }
+  },
+  "wan-3.0-apimart": {
+    "defaultModeId": "t2v",
+    "modes": {
+      "t2v": "text_to_video",
+      "first": "image_to_video",
+      "firstlast": "image_to_video",
       "ref": "image_to_video"
     }
   },
@@ -234,7 +294,23 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
       "edit": "image_edit"
     }
   },
+  "volcengine-seedream-5-pro": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image",
+      "edit": "image_edit"
+    }
+  },
   "volcengine-seedance-2": {
+    "defaultModeId": "t2v",
+    "modes": {
+      "t2v": "text_to_video",
+      "first": "image_to_video",
+      "firstlast": "image_to_video",
+      "omni": "image_to_video"
+    }
+  },
+  "volcengine-seedance-2-5": {
     "defaultModeId": "t2v",
     "modes": {
       "t2v": "text_to_video",
@@ -272,6 +348,13 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
     }
   },
   "codex-imagegen": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image",
+      "i2i": "image_edit"
+    }
+  },
+  "antigravity-image": {
     "defaultModeId": "t2i",
     "modes": {
       "t2i": "text_to_image",
@@ -375,11 +458,35 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
       "edit": "image_edit"
     }
   },
+  "agnes-image-2.1": {
+    "defaultModeId": "t2i",
+    "modes": {
+      "t2i": "text_to_image",
+      "edit": "image_edit"
+    }
+  },
   "agnes-video": {
     "defaultModeId": "t2v",
     "modes": {
       "t2v": "text_to_video",
-      "i2v": "image_to_video"
+      "i2v": "image_to_video",
+      "keyframes": "image_to_video"
+    }
+  },
+  "agnes-video-2.5": {
+    "defaultModeId": "text",
+    "modes": {
+      "text": "text_to_video",
+      "keyframe": "image_to_video",
+      "reference": "image_to_video"
+    }
+  },
+  "agnes-video-2.5-flash": {
+    "defaultModeId": "text",
+    "modes": {
+      "text": "text_to_video",
+      "keyframe": "image_to_video",
+      "reference": "image_to_video"
     }
   }
 };

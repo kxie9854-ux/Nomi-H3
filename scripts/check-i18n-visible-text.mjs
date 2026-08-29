@@ -50,6 +50,7 @@ const EXCLUDED_PREFIXES = [
   'src/i18n/', // translation resources themselves
   'src/devlab/',
   'electron/capabilityCore/', // MCP/RPC schemas and agent-facing protocol text
+  'electron/shared/videoCapabilities/', // source-backed model facts; rendered by GUI/MCP capability boundaries
 ]
 const EXCLUDED_FILES = new Set([
   'src/config/knownVendors.ts', // getLocalizedKnownVendors translates every displayed field
@@ -69,7 +70,7 @@ const EXCLUDED_FILES = new Set([
   'src/workbench/timeline/timelineTypes.ts', // persisted stable labels; TimelineTrack displays by type key
   'electron/catalog/comfyuiLocal.ts', // translated by renderer model display-text boundary
   'electron/catalog/newapiTransport.ts', // translated by renderer model display-text boundary
-  'electron/ai/canvasTools.ts', // tool schemas and multilingual examples are agent-facing protocol text
+  'electron/harness/tools/canvasDescriptors.ts', // tool schemas and multilingual examples are agent-facing protocol text
   'electron/promptLibrary/promptSources.ts', // external curated source names
 ])
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { dispatch, RpcError, type DispatchContext } from './dispatcher'
+import { dispatch, type DispatchContext } from './dispatcher'
 import { emptyCanvasSnapshot, addNodes, type CanvasSnapshot } from './canvasGraph'
 
 function context(snapshot: CanvasSnapshot): { ctx: DispatchContext; read: () => CanvasSnapshot } {
@@ -43,7 +43,7 @@ describe('canvas.freezeNodes dispatch', () => {
     harness.ctx.makeGateway = makeGateway
     await expect(dispatch('canvas.freezeNodes', {
       projectId: 'project-1', nodeIds: [],
-    }, harness.ctx)).rejects.toMatchObject<RpcError>({ httpStatus: 400 })
+    }, harness.ctx)).rejects.toMatchObject({ httpStatus: 400 })
     expect(makeGateway).not.toHaveBeenCalled()
   })
 })
@@ -66,7 +66,7 @@ describe('canvas.groupNodes dispatch', () => {
     harness.ctx.makeGateway = makeGateway
     await expect(dispatch('canvas.groupNodes', {
       projectId: 'project-1', nodeIds: ['one'], name: '单节点',
-    }, harness.ctx)).rejects.toMatchObject<RpcError>({ httpStatus: 400 })
+    }, harness.ctx)).rejects.toMatchObject({ httpStatus: 400 })
     expect(makeGateway).not.toHaveBeenCalled()
   })
 })

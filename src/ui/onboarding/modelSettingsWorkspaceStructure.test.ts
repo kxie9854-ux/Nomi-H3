@@ -38,7 +38,9 @@ describe('model settings workspace structure', () => {
     expect(navigation).toContain('closeModelSettingsDialog')
     expect(settings).toContain('data-settings-content')
     expect(settings).toContain('data-settings-model-workspace')
-    expect(settings).toContain('<OnboardingDrawer />')
+    // 2026-08-25 起带 pageRequest：设置里的「去配置 KIE」要能直达那家的 Key 输入页，
+    // 而模型工作区首访后常驻挂载，只能靠这个请求值把它推到目标页（详见 useModelPageRequest）。
+    expect(settings).toContain('<OnboardingDrawer pageRequest={modelPageRequest} />')
     expect(drawer).not.toContain('data-model-settings-detail-panel')
     expect(drawer).not.toContain('data-model-settings-detail-context')
     expect(drawer).not.toContain('INERT_HTML_ATTRIBUTE')
@@ -235,8 +237,10 @@ describe('model settings workspace structure', () => {
     expect(home).not.toContain('useVendorHealthMap')
     expect(home).toContain('data-model-home-unreachable')
     // 探测要的入参得真的从 drawer 传下来，否则 hook 拿到空 baseUrl 永远探不出结果。
-    expect(drawer).toContain('hasApiKey: meta?.hasApiKey ?? true')
-    expect(drawer).toContain('baseUrl: card.meta.baseUrl')
+    expect(drawer).toContain('projectOnboardingConnections({')
+    const connections = read('src/ui/onboarding/onboardingDrawerConnections.ts')
+    expect(connections).toContain('hasApiKey: meta?.hasApiKey ?? true')
+    expect(connections).toContain('baseUrl: card.meta.baseUrl')
     // 区块标题不许在有家连不上时还写「N 个可使用」（与行内红字打架）。
     expect(home).toContain('unreachableAside ?? (hasAttention')
   })

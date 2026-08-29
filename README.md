@@ -17,7 +17,7 @@ Your projects, prompts, and API keys stay on your machine. No account. No teleme
 ### Join the Nomi user group / 加入 Nomi 用户群
 
 <p align="center">
-  <a href="docs/media/nomi-canvas-group-wechat-2026-08-17.jpg"><img src="docs/media/nomi-canvas-group-wechat-2026-08-17.jpg" alt="Nomi 用户群微信二维码" width="220" /></a>
+  <a href="docs/media/nomi-canvas-group-wechat-2026-08-25.jpg"><img src="docs/media/nomi-canvas-group-wechat-2026-08-25.jpg" alt="Nomi 用户群微信二维码" width="220" /></a>
 </p>
 
 <p align="center">
@@ -49,7 +49,7 @@ International community: [GitHub Discussions](https://github.com/aqm857886159/No
 - **One project, not eleven tabs.** Story, shots, references, generated takes, and the timeline live in the same file on your disk instead of being copied between disconnected tools.
 - **Shot 4 and shot 9 should be the same person.** Lock characters, locations, props, camera, and style once; later shots inherit them instead of restarting from a new prompt.
 - **Bring your own stack.** Around ten curated providers are pre-wired, and any OpenAI-compatible, Anthropic, Responses, or relay endpoint can be added by pasting a URL and a key — no rebuild. A local ComfyUI is a provider like any other: Nomi converts the normal "Save" workflow format, so the workflows you download actually import, and it diffs the graph against `/object_info` to tell you which custom nodes and model files you are missing before you run it.
-- **Your agent can operate it.** Twenty-seven MCP tools let Claude Code, Codex, or Cursor converge on a direction in one pass, create projects, import local assets, lay out and group shots, materialize an approved storyboard into the Nomi canvas, wire references, run generation, assemble approved clips on the timeline, export the timeline to MP4, and control a durable production run. Reversible direction and sample choices receive a server-issued human confirmation in the originating client; budgets, per-shot paid submissions, and rough-cut acceptance stay in Nomi, enforced in the main process.
+- **Your agent can operate it.** Nomi's MCP tools let Claude Code, Codex, or Cursor converge on a direction in one pass, create projects, import local assets, lay out and group shots, lock approved visual anchors, materialize an approved storyboard into the Nomi canvas, wire references, run generation, assemble approved clips on the timeline, export MP4, and control a durable production run. The staged semantic generation tools make model, provider, mode, parameters, and references editable before sealing; they remain zero-credit and feature-gated until the Run/recovery checks pass. Reversible direction and sample choices receive a server-issued human confirmation in the originating client; budgets, per-shot paid submissions, rough-cut acceptance, and export stay in Nomi, enforced in the main process.
 
 ## Download
 
@@ -93,7 +93,7 @@ Read the [user guide](docs/user-guide.md), [provider guide](docs/provider-integr
 
 ## Community
 
-Join [GitHub Discussions](https://github.com/aqm857886159/Nomi/discussions) to share workflows, report friction, and follow what is being built next. WeChat users can use the group and maintainer QR codes at the top of this README; the [Chinese README](README.zh-CN.md#用户群) contains the full Chinese guide.
+Use [GitHub Discussions](https://github.com/aqm857886159/Nomi/discussions) to ask questions, share workflows, and follow what is being built next, and [GitHub Issues](https://github.com/aqm857886159/Nomi/issues) to report bugs and request features. WeChat users can use the group and maintainer QR codes at the top of this README; the [Chinese README](README.zh-CN.md#用户群) contains the full Chinese guide.
 
 ## For Teams
 
@@ -132,8 +132,8 @@ pnpm run gates
 Bug reports, feature proposals, documentation, and code contributions are welcome. External contributors sign the one-time [Contributor License Agreement](CLA.md) when a pull request is opened.
 
 - [Report a bug](https://github.com/aqm857886159/Nomi/issues/new?template=bug_report.yml)
-- [Request a feature](https://github.com/aqm857886159/Nomi/issues/new?template=feedback.yml)
-- [Join a discussion](https://github.com/aqm857886159/Nomi/discussions)
+- [Request a feature](https://github.com/aqm857886159/Nomi/issues/new?template=feature_request.yml)
+- [Ask a question or share an idea](https://github.com/aqm857886159/Nomi/discussions)
 
 ## License
 

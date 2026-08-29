@@ -30,7 +30,11 @@ export type FetchTaskResultFn = (payload: {
   projectId?: string
 }) => Promise<{ result: TaskResultLike }>
 
-export const TERMINAL_TASK_STATUSES = new Set(['succeeded', 'failed'])
+export function isTerminalTaskStatus(status: string | undefined): boolean {
+  return status === 'succeeded' || status === 'failed'
+}
+
+export type GenerationContinuationStatus = 'running' | 'recoverable'
 
 export function delayTaskPoll(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -164,7 +168,7 @@ export function setNodeTaskInSnapshot(
   snapshot: CanvasSnapshot,
   nodeId: string,
   identity: PersistedTaskIdentity,
-  status: 'running' | 'recoverable',
+  status: GenerationContinuationStatus,
   error?: string,
 ): CanvasSnapshot {
   const now = Date.now()
@@ -221,7 +225,7 @@ export function writeResultToSnapshot(
                   ...run,
                   status: runStatus,
                   updatedAt: Date.now(),
-                  ...(TERMINAL_TASK_STATUSES.has(result.status || '') ? { completedAt: Date.now() } : {}),
+                  ...(isTerminalTaskStatus(result.status) ? { completedAt: Date.now() } : {}),
                   ...(result.error ? { error: result.error } : {}),
                 }
               : run)

@@ -1,8 +1,11 @@
 # docs/plan 索引地图
 
-> 71 篇方案/执行文档按**主题**分组的查找表。文件本身保持平铺（彼此有 50+ 处路径互链，移动会断链），本表负责「按主题/状态秒定位」。
+> 方案/执行文档按**主题**分组的查找表。文件本身保持平铺（彼此有大量路径互链，移动会断链），本表负责「按主题/状态秒定位」。
+> 本索引仍有历史存量缺口；查不到时必须继续全量搜索。`check:docs-index` 保证缺口只减不增。
+> 跨阶段总纲另见 [`docs/superpowers/plans/`](../superpowers/plans/)；当前主文档是 [Nomi 统一 Agent 总体方案](../superpowers/plans/2026-08-24-unified-agent-master-plan.md)。
 > 新增 plan 时**顺手在本表对应主题下加一行**。
-> 状态图例：✅ 已落地 ｜ 🚧 进行中/待实施 ｜ 📋 方案待拍板 ｜ ⛔ 已撤销/废弃 ｜ 📎 交接/日志
+> 状态图例：✅ 已交付 ｜ 🚧 进行中 ｜ ⏳ 已拍板·未开工 ｜ 🧊 暂缓/远期 ｜ 📋 方案待拍板 ｜ ⛔ 已废弃 ｜ 📎 交接/日志
+> 📋/⏳/🚧 会进 [交付账本](../DELIVERY-LEDGER.md) 现役区并被每日提醒；🧊 列出但不催；无标记 = 未登记存量，不打扰。
 
 ## 模型接入 / Onboarding（最大簇）
 
@@ -61,6 +64,9 @@
 
 | 文件 | 一句话 | 状态 |
 |---|---|---|
+| [2026-08-28-reference-media-mentions.md](2026-08-28-reference-media-mentions.md) | 图片/视频/音频 @ 引用统一：候选、真实参考槽、编辑器与发送投影 | ✅ |
+| [2026-08-27-root-cause-remediation-and-media-boundary-fixes.md](2026-08-27-root-cause-remediation-and-media-boundary-fixes.md) | Comfy/custom-call 媒体契约根因修复 + 可执行根因合同门禁 | ✅ |
+| [2026-08-27-single-source-semantics-gate.md](2026-08-27-single-source-semantics-gate.md) | ProjectAgent 统一前置：AST 语义词表门岗 + R14.1 单一 owner 审计 | ✅ |
 | [2026-06-09-agent-harness-architecture.md](2026-06-09-agent-harness-architecture.md) | **Agent Harness 架构定义与演进** — 本簇主文档 | 📋 |
 | [2026-06-21-self-improving-harness-loop.md](2026-06-21-self-improving-harness-loop.md) | **自我改进 harness 闭环**：AI 扮用户跑测试→量化诊断→修→重跑；架构铁律=查agent≠修agent(治自偏)；指标分三层(客观脊梁/半客观校准/主观人锚)；扩现有评测体系；不训模型/不碰GPU | 📋 |
 | [2026-06-10-nomi-harness-requirements.md](2026-06-10-nomi-harness-requirements.md) | Harness 需求真相源 | 📋 |
@@ -70,10 +76,28 @@
 | [agent-foundation.md](agent-foundation.md) | Agent 底座能力规格（Foundation Spec） | 📋 |
 | [2026-06-01-agent-system-review.md](2026-06-01-agent-system-review.md) | Agent 系统梳理 + 4 个问题处理 | 📎 |
 | [2026-06-06-unified-agent-merge.md](2026-06-06-unified-agent-merge.md) | 合并创作 agent 与画布 agent（草案） | 📋 |
-| [agent-merge-architecture.md](agent-merge-architecture.md) | 两个 Agent 合并：修幻影工具+架构对齐 | 🚧 |
+| [agent-merge-architecture.md](agent-merge-architecture.md) | 两个 Agent 合并：修幻影工具+架构对齐（历史架构，已由 pi SDK 运行时取代） | ⛔ |
 | [2026-06-07-assistant-consolidation-plan.md](2026-06-07-assistant-consolidation-plan.md) | 助手面板收敛（双面板→单上下文助手） | 🚧 |
 | [2026-06-07-assistant-mockup-implementation.md](2026-06-07-assistant-mockup-implementation.md) | 助手面板对齐样张（R8 实现规范） | 🚧 |
 | [2026-06-09-创作AI附件与对话体验.md](2026-06-09-创作AI附件与对话体验.md) | 创作 AI 助手：多格式附件+对话升级 | 📋 |
+
+## Nomi-H3 导演主路径
+
+| 文件 | 一句话 | 状态 |
+|---|---|---|
+| [2026-08-23-codex-panel-spend-confirm.md](2026-08-23-codex-panel-spend-confirm.md) | Codex 侧栏付费确认与授权回执 | ✅ |
+| [2026-08-24-h3-recovery-and-canvas-group-mcp.md](2026-08-24-h3-recovery-and-canvas-group-mcp.md) | H3 断线续查与画布分组 MCP | ✅ |
+| [2026-08-24-project-director-session-persistence.md](2026-08-24-project-director-session-persistence.md) | 项目级导演会话持久化 | ✅ |
+| [2026-08-25-deferred-video-timeout.md](2026-08-25-deferred-video-timeout.md) | 延迟视频加载超时根因修复 | ✅ |
+| [2026-08-25-director-backend-setup.md](2026-08-25-director-backend-setup.md) | 导演首次打开的后端配置引导 | ✅ |
+| [2026-08-25-director-numbered-choice-fallback.md](2026-08-25-director-numbered-choice-fallback.md) | 导演编号选项的稳定兜底 | ✅ |
+| [2026-08-25-director-workspace-hydration.md](2026-08-25-director-workspace-hydration.md) | 项目级 Codex 导演工作台恢复 | ✅ |
+| [2026-08-25-next-phase-director-surface.md](2026-08-25-next-phase-director-surface.md) | 导演主路径产品化执行面 | ✅ |
+| [2026-08-26-codex-text-brain.md](2026-08-26-codex-text-brain.md) | Codex 统一承担文本大脑 | ✅ |
+| [2026-08-26-director-export-loop.md](2026-08-26-director-export-loop.md) | 导演配乐、剪辑到导出闭环 | ✅ |
+| [2026-08-26-director-skill-picker.md](2026-08-26-director-skill-picker.md) | 导演可点选 Skill 与模板 | ✅ |
+| [2026-08-26-multi-shot-identity-lock.md](2026-08-26-multi-shot-identity-lock.md) | 多镜头角色身份锁定 | ✅ |
+| [2026-08-29-upstream-v0.21-integration.md](2026-08-29-upstream-v0.21-integration.md) | 将 Nomi-H3 导演能力整合到 upstream v0.21.0 | ✅ |
 
 ## 时间轴 / 预览 / 导出
 
@@ -83,6 +107,9 @@
 | [2026-06-03-timeline-interaction-rework.md](2026-06-03-timeline-interaction-rework.md) | 时间轴交互层重做 | 📋 |
 | [2026-06-04-timeline-wysiwyg-and-export.md](2026-06-04-timeline-wysiwyg-and-export.md) | P2 预览=成片(WYSIWYG) + P3 导出能力 | 📋 |
 | [2026-06-21-blender-3d-render-lane.md](2026-06-21-blender-3d-render-lane.md) | **Blender 3D 渲染 lane**：AI 生资产→headless Blender 渲简单镜头→进时间轴，补「跨镜一致+真相机控制」；范围狠砍(不碰绑骨/动画/GUI/捆绑) | 📋 |
+| [2026-08-28-editing-engine-review.md](2026-08-28-editing-engine-review.md) | Editing engine build-vs-buy review and open-source research | 🚧 |
+| [2026-08-28-editing-engine-uplift.md](2026-08-28-editing-engine-uplift.md) | P0 timeline kernel and Agent editing control plane | 🚧 |
+| [2026-08-28-timeline-visual-feedback.md](2026-08-28-timeline-visual-feedback.md) | Timeline source-window and transition support feedback | 🚧 |
 
 ## 项目库 / 素材库 / Workspace / 左面板
 

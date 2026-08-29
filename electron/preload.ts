@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { importNativeFileFromPreload } from "./assets/nativeFileBridge";
+import type { AgentChatStartRequest, AgentChatHistoryRequest, AgentChatToolDecision, AgentChatWireEvent } from './harness/agentChatContracts';
 
 type SyncResult<T> = { ok: true; value: T } | { ok: false; error: string };
 type ProductionDeepLinkPayload = { projectId: string; runId?: string; nodeId?: string; artifactId?: string };
@@ -128,6 +129,10 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       ipcRenderer.invoke("nomi:projects:save-async", projectId, record),
     delete: (projectId: string) => invokeSync("nomi:projects:delete", projectId),
   },
+  clipboard: {
+    readFilePaths: () => ipcRenderer.invoke("nomi:clipboard:read-file-paths") as Promise<string[]>,
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
+  },
   productionRuns: {
     list: (projectId: string) => ipcRenderer.invoke("nomi:production-runs:list", { projectId }),
     read: (projectId: string, runId: string) => ipcRenderer.invoke("nomi:production-runs:read", { projectId, runId }),
@@ -138,6 +143,11 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       ipcRenderer.invoke("nomi:production-runs:materialize-storyboard", { projectId, runId, artifactId, expectedVersion }),
     events: (projectId: string, runId: string, afterCursor: number) =>
       ipcRenderer.invoke("nomi:production-runs:events", { projectId, runId, afterCursor }),
+    // P4 S6：返工一镜（同 Run 新 Job + 单镜确认 + 派发）；续拍已停批次（manual=急停继续 / budget=提额续拍）。
+    rework: (projectId: string, runId: string, shotId?: string) =>
+      ipcRenderer.invoke("nomi:production-runs:rework", { projectId, runId, ...(shotId ? { shotId } : {}) }),
+    resumeBatch: (projectId: string, runId: string, reason: "budget" | "manual") =>
+      ipcRenderer.invoke("nomi:production-runs:resume-batch", { projectId, runId, reason }),
   },
   assets: {
     list: (payload: unknown) => ipcRenderer.invoke("nomi:assets:list", payload),
@@ -158,6 +168,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       getPathForFile: (nativeFile) => webUtils.getPathForFile(nativeFile),
       invoke: (channel, request) => ipcRenderer.invoke(channel, request),
     }),
+    copyFiles: (payload: unknown) => ipcRenderer.invoke("nomi:assets:copy-files", payload),
     // 播放懒自愈：nomi-local 视频解不了（HEVC 存量/供应商 HEVC 产物）→ 主进程转码出新 MP4 资产。
     ensurePlayable: (payload: unknown) => ipcRenderer.invoke("nomi:assets:ensure-playable", payload),
     // 引导示例项目：把随包成图落成项目资产，回 clientId → nomi-local URL（渲染侧算不出稳定地址）。
@@ -324,6 +335,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     showInFolder: (payload: unknown) => ipcRenderer.invoke("nomi:exports:show-in-folder", payload),
   },
   tasks: {
+    cancel: (taskId: string) => ipcRenderer.invoke("nomi:tasks:cancel", taskId) as Promise<{ ok: boolean }>,
     run: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:run", payload),
     result: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:result", payload),
     // 付费守卫：真人确认后铸一次性令牌（绑 nodeIds），返回不透明 grantId 随生成请求下传。
@@ -384,6 +396,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       ipcRenderer.invoke("nomi:prompt-library:text-brain") as Promise<{
         ok: boolean;
         brain: { vendor: string; modelKey: string } | null;
+        status: "ok" | "locked" | "missing";
       }>,
     userList: () =>
       ipcRenderer.invoke("nomi:prompt-library:user-list") as Promise<{
@@ -423,18 +436,17 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       ipcRenderer.invoke("nomi:conversations:write", { projectId, ...payload }),
   },
   agents: {
-    chatV2Start: (payload: unknown) =>
+    chatV2Start: (payload: AgentChatStartRequest) =>
       ipcRenderer.invoke("nomi:agents:chatV2:start", payload) as Promise<{ sessionId: string }>,
-    confirmTool: (sessionId: string, toolCallId: string, decision: unknown) =>
+    confirmTool: (sessionId: string, toolCallId: string, decision: AgentChatToolDecision) =>
       ipcRenderer.invoke("nomi:agents:chatV2:confirmTool", { sessionId, toolCallId, decision }),
     cancelChatV2: (sessionId: string) => ipcRenderer.invoke("nomi:agents:chatV2:cancel", { sessionId }),
-    clearChatV2Session: (sessionKey: string) => ipcRenderer.invoke("nomi:agents:chatV2:clearSession", { sessionKey }),
-    seedChatV2Session: (sessionKey: string, messages: Array<{ role: string; content: string }>) =>
-      ipcRenderer.invoke("nomi:agents:chatV2:seedSession", { sessionKey, messages }),
-    chatV2SessionAlive: (sessionKey: string) =>
-      ipcRenderer.invoke("nomi:agents:chatV2:sessionAlive", { sessionKey }) as Promise<{ alive: boolean }>,
-    onChatV2Event: (sessionId: string, callback: (event: unknown) => void) => {
-      const listener = (_event: unknown, payload: { sessionId: string; event: unknown }) => {
+    clearChatV2Session: (request: AgentChatHistoryRequest) => ipcRenderer.invoke("nomi:agents:chatV2:clearSession", request),
+    seedChatV2Session: (request: AgentChatHistoryRequest) => ipcRenderer.invoke("nomi:agents:chatV2:seedSession", request),
+    chatV2SessionAlive: (request: AgentChatHistoryRequest) =>
+      ipcRenderer.invoke("nomi:agents:chatV2:sessionAlive", request) as Promise<{ alive: boolean }>,
+    onChatV2Event: (sessionId: string, callback: (event: AgentChatWireEvent) => void) => {
+      const listener = (_event: unknown, payload: { sessionId: string; event: AgentChatWireEvent }) => {
         if (payload && payload.sessionId === sessionId) callback(payload.event);
       };
       ipcRenderer.on("nomi:agents:chatV2:event", listener as never);
@@ -444,6 +456,9 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
     },
   },
   onboarding: {
+    antigravityStatus: () => ipcRenderer.invoke("nomi:antigravity:status"),
+    antigravityTest: (payload?: unknown) => ipcRenderer.invoke("nomi:antigravity:test", payload),
+    antigravityCancel: () => ipcRenderer.invoke("nomi:antigravity:cancel"),
     adapterRegister: (payload: unknown) =>
       ipcRenderer.invoke("nomi:provider-adapter:register", payload),
     adapterStart: (payload: unknown) =>
@@ -511,6 +526,10 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
         ipcRenderer.removeListener("nomi:update:event", listener as never);
       };
     },
+  },
+  assetTransport: {
+    /** 每种媒体类型现在实际会走的第一条上传通道（设置页状态卡；优先级真相在 main 的解析器里）。 */
+    describeChannels: () => invokeSync("nomi:asset-transport:channels:describe"),
   },
   modelCatalog: {
     listVendors: () => invokeSync("nomi:model-catalog:vendors:list"),

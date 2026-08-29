@@ -11,9 +11,11 @@ import {
 } from './catalogTaskActions'
 import { resolveGenerationReferences } from './generationReferenceResolver'
 import { MODEL_ARCHETYPES } from '../../../config/modelArchetypes'
+import { encodeMention } from '../../assets/promptMentions'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import type { TaskRequestDto, TaskResultDto } from '../../api/taskApi'
 import type { ModelCatalogModelDto, ModelCatalogVendorDto } from '../../api/modelCatalogApi'
+import * as localTaskControl from './localTaskControl'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -166,6 +168,19 @@ describe('buildCatalogTaskRequest — 档案驱动 input（extras.archetypeInput
     expect(ai.reference_image_urls).toEqual(['c1.png', 'c2.png'])
     expect(ai.reference_video_urls).toEqual(['v1.mp4'])
     expect(ai.first_frame_url).toBeUndefined()
+  })
+
+  it('全能参考模式：连入的视频引用在最终请求提示词中投影为 @video1', () => {
+    const videoUrl = 'nomi-local://asset/project/drone-reference.mp4'
+    const node = seedanceVideoNode('omni', {})
+    node.prompt = `镜头运动参考 ${encodeMention(videoUrl)}`
+
+    const request = buildCatalogTaskRequest(node, {
+      references: { referenceVideos: [videoUrl] },
+    }).request
+
+    expect(request.prompt).toBe('镜头运动参考 @video1')
+    expect((request.extras?.archetypeInput as Record<string, unknown>).reference_video_urls).toEqual([videoUrl])
   })
 })
 
@@ -445,6 +460,34 @@ describe('runCatalogGenerationTask — 轮询硬超时抛 RecoverableTimeoutErro
     expect(error.detail).toMatchObject({
       taskId: 'up-task-9', vendor: 'asyncv', taskKind: 'text_to_video', modelKey: 'vid',
     })
+  })
+})
+
+describe('runCatalogGenerationTask — confirmed local cancellation wins over polling', () => {
+  const node: GenerationCanvasNode = {
+    id: 'local-image-node', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: 'a crane',
+    meta: { modelKey: 'generate_image', vendor: 'antigravity-cli' },
+  }
+  it.each(['before-query', 'during-query'])('does not publish a late success when cancelled %s', async (moment) => {
+    let cancelled = false
+    const cancelFlag = vi.spyOn(localTaskControl, 'isTaskCancelRequested').mockImplementation((id) => id === node.id && cancelled)
+    const runTask = vi.fn(async (_vendor: string, request: TaskRequestDto): Promise<TaskResultDto> => {
+      if (moment === 'before-query') cancelled = true
+      return { id: 'local-job', kind: request.kind, status: 'queued', assets: [], raw: {} }
+    })
+    const fetchTaskResult = vi.fn(async () => {
+      await Promise.resolve()
+      cancelled = true // Models a cancellation acknowledgement arriving while the query was in flight.
+      return { vendor: 'antigravity-cli', result: {
+        id: 'local-job', kind: 'text_to_image' as const, status: 'succeeded' as const,
+        assets: [{ type: 'image' as const, url: 'nomi-local://late-output.jpg' }], raw: {},
+      } }
+    })
+    try {
+      await expect(runCatalogGenerationTask(node, { runTask, fetchTaskResult, pollIntervalMs: 1 })).rejects.toMatchObject({ name: 'LocalTaskCancelledError' })
+      expect(runTask).toHaveBeenCalledOnce()
+      expect(fetchTaskResult).toHaveBeenCalledTimes(moment === 'before-query' ? 0 : 1)
+    } finally { cancelFlag.mockRestore() }
   })
 })
 

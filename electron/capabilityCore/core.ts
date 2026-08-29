@@ -43,7 +43,7 @@ import { AUTODL_ART_H3_MODEL_SEED, AUTODL_ART_VENDOR_SEED } from '../catalog/aut
 import { autodlArtH3RejectReason, prepareAutodlArtH3Params } from '../catalog/autodlArtH3Mode'
 import { createSpendTrustScope } from './mcpSpendTrust'
 import {
-  TERMINAL_TASK_STATUSES,
+  isTerminalTaskStatus,
   delayTaskPoll,
   extractTextFromRaw,
   frameUrlsFromEdges,
@@ -84,6 +84,12 @@ export type ShotVerifyDepsContext = {
 }
 export type MakeVerifyDeps = (ctx: ShotVerifyDepsContext) => ShotVerifyDeps
 
+/** Headless/MCP 轮询上限：视频 API 官方建议客户端最多等待 15 分钟，允许环境变量覆盖。 */
+export function resolveCapabilityPollTimeoutMs(kind: string, envValue: string | undefined = process.env.NOMI_POLL_TIMEOUT_MS): number {
+  const override = Number(envValue)
+  if (Number.isFinite(override) && override > 0) return override
+  return kind === 'text_to_video' || kind === 'image_to_video' ? 900_000 : 240_000
+}
 
 function defaultKindForIntent(intent: GenerateIntent, hasReferences: boolean): string {
   switch (intent) {
@@ -377,7 +383,7 @@ export async function generateOnProject(
       const envPoll = Number(process.env.NOMI_POLL_TIMEOUT_MS)
       const timeoutMs = Number.isFinite(envPoll) && envPoll > 0 ? envPoll : 300000
       const startedAt = Date.now()
-      while (resumed.status && !TERMINAL_TASK_STATUSES.has(resumed.status)) {
+      while (resumed.status && !isTerminalTaskStatus(resumed.status)) {
         if (Date.now() - startedAt > timeoutMs) {
           throw new Error(desktopT('tasks.pollTimedOut', {
             seconds: Math.round((Date.now() - startedAt) / 1000),
@@ -484,9 +490,9 @@ export async function generateOnProject(
     // 于是 runFirstHop 判「首帧未产出可用图」→ 每次都降级。主路径（下面那段）一直有轮询，
     // 这条支路漏了（单测的 runTaskFn 桩是同步返图的，桩不会 queued，所以测不出来）。
     let frame = out
-    if (fetchTaskResultFn && frame.status && !TERMINAL_TASK_STATUSES.has(frame.status)) {
+    if (fetchTaskResultFn && frame.status && !isTerminalTaskStatus(frame.status)) {
       const startedAt = Date.now()
-      while (frame.status && !TERMINAL_TASK_STATUSES.has(frame.status)) {
+      while (frame.status && !isTerminalTaskStatus(frame.status)) {
         if (Date.now() - startedAt > 240000) break // 首帧是增益，到点就放弃走一跳，不拖垮整镜
         await delayTaskPoll(1500)
         const polled = await fetchTaskResultFn({
@@ -592,22 +598,21 @@ export async function generateOnProject(
     result = await runTaskFn({ vendor: input.vendor, request })
 
     // 异步 vendor 首调返 queued/processing → 本进程内轮询到终态（视频给更长超时）。无 fetch 注入则不轮询。
-    if (fetchTaskResultFn && result.status && !TERMINAL_TASK_STATUSES.has(result.status)) {
+    if (fetchTaskResultFn && result.status && !isTerminalTaskStatus(result.status)) {
       if (result.id) {
         submittedTask = { taskId: result.id, taskKind: kind }
         await gateway.apply(setNodeTaskInSnapshot(await gateway.readDoc(), nodeId, submittedTask, 'running'))
       }
-      // 慢 vendor（如 runninghub/ComfyUI 队列可达数分钟）可经 NOMI_POLL_TIMEOUT_MS 调大本进程轮询上限，
-      // 否则 240s/300s 到点 break → 结果未取回（headless 返 queued）。缺省维持原值。
-      const envPoll = Number(process.env.NOMI_POLL_TIMEOUT_MS)
-      const timeoutMs = Number.isFinite(envPoll) && envPoll > 0 ? envPoll : (kind === 'text_to_video' || kind === 'image_to_video' ? 300000 : 240000)
+      // 慢 vendor（如 APIMart H3 官方资源有限）可经 NOMI_POLL_TIMEOUT_MS 覆盖本进程轮询上限；
+      // 视频默认 15 分钟与供应商建议一致，避免 5 分钟时任务仍在上游排队却被本地判失败。
+      const timeoutMs = resolveCapabilityPollTimeoutMs(kind)
       // 轮询间隔与渲染层同策：视频 3s、其余 1.5s（厂商文档要求查询间隔 ≥3-5s，见
       // docs/plan/2026-07-31-seedance-api-contract-reconciliation.md §三）。跨进程边界拿不到
       // 渲染层的 resolvePollIntervalMs，故此处是**配对常量，改一处必改另一处**（同 vendorErrorIpc
       // 的 MARKER 约定）。本循环一次只跑一个任务，不存在批量同相位问题，故不叠抖动/退避。
       const pollIntervalMs = kind === 'text_to_video' || kind === 'image_to_video' ? 3000 : 1500
       const startedAt = Date.now()
-      while (result.status && !TERMINAL_TASK_STATUSES.has(result.status)) {
+      while (result.status && !isTerminalTaskStatus(result.status)) {
         if (Date.now() - startedAt > timeoutMs) {
           // 到点必须落**终态**：旧版直接 break，result 保持 queued/running 且不带 error —— 调用方
           // （MCP/agent/CLI）拿到一个永远非终态的结果，等同「转圈但没人告诉你出了什么事」。
@@ -712,8 +717,8 @@ export async function generateOnProject(
   const advisories: string[] = []
   if (unfrozen.length) {
     advisories.push(
-      `这一镜引用的 ${unfrozen.length} 张卡还没冻结定妆：${unfrozen.map((n) => n.title || n.id).join('、')}。`
-      + '没冻结就往下铺镜头，跨镜很容易换脸——建议先把这几张卡拿给用户过目、确认后再批量生成。',
+      `这一镜引用的 ${unfrozen.length} 张卡还没定妆：${unfrozen.map((n) => n.title || n.id).join('、')}。`
+      + '没定妆就往下铺镜头，跨镜很容易换脸——建议先把这几张卡拿给用户过目、在卡上点「定妆」确认后再批量生成。',
     )
   }
   // 两跳降级的**理由必须说出来**（D4 缺口明着标）。它一直被算出来却从没暴露过——

@@ -7,6 +7,7 @@ import { getSettingsRoot, SETTINGS_ROOT_ENV } from "../settings/settingsRoot";
 import { wrapDirectorUserText } from "./directorUserText";
 import { getCodexAppServerHost, type CodexUiEvent } from "./host";
 import { importDirectorSkillMarkdown, listDirectorSkills, parseDirectorSkillMode, resolveTurnSkills } from "./directorSkills";
+import { assertTrustedSender } from "../ipcSenderGuard";
 
 function directorCwd(): string {
   const dir = path.join(getSettingsRoot(), "codex-director");
@@ -51,11 +52,13 @@ export function registerCodexAppServerIpc(): void {
   };
   host.onEvent(forward);
 
-  ipcMain.handle("nomi:codex:status", () => host.status());
-  ipcMain.handle("nomi:codex:ensure", async (_event, cwd: unknown) => {
+  ipcMain.handle("nomi:codex:status", (event) => (assertTrustedSender(event), host.status()));
+  ipcMain.handle("nomi:codex:ensure", async (event, cwd: unknown) => {
+    assertTrustedSender(event);
     return host.ensure(resolveCwd(cwd), path.join(app.getAppPath(), "skills"));
   });
   ipcMain.handle("nomi:codex:login", async (event) => {
+    assertTrustedSender(event);
     const result = await host.loginChatgpt();
     if (result.authUrl) {
       const win = senderWindow(event);
@@ -63,7 +66,8 @@ export function registerCodexAppServerIpc(): void {
     }
     return result;
   });
-  ipcMain.handle("nomi:codex:send", async (_event, payload: unknown) => {
+  ipcMain.handle("nomi:codex:send", async (event, payload: unknown) => {
+    assertTrustedSender(event);
     const record = payload && typeof payload === "object"
       ? (payload as { text?: unknown; cwd?: unknown; projectId?: unknown; canvasContext?: unknown; skillIds?: unknown; mode?: unknown })
       : {};
@@ -83,24 +87,29 @@ export function registerCodexAppServerIpc(): void {
     );
     return { ok: true };
   });
-  ipcMain.handle("nomi:codex:list-skills", () => {
+  ipcMain.handle("nomi:codex:list-skills", (event) => {
+    assertTrustedSender(event);
     return listDirectorSkills(app.getAppPath(), getSettingsRoot());
   });
-  ipcMain.handle("nomi:codex:import-skill", (_event, payload: unknown) => {
+  ipcMain.handle("nomi:codex:import-skill", (event, payload: unknown) => {
+    assertTrustedSender(event);
     const record = payload && typeof payload === "object" ? payload as { markdown?: unknown; fileName?: unknown } : {};
     const markdown = typeof record.markdown === "string" ? record.markdown : "";
     const fileName = typeof record.fileName === "string" ? record.fileName : undefined;
     return importDirectorSkillMarkdown(getSettingsRoot(), markdown, fileName);
   });
-  ipcMain.handle("nomi:codex:read-history", async (_event, projectId: unknown) => {
+  ipcMain.handle("nomi:codex:read-history", async (event, projectId: unknown) => {
+    assertTrustedSender(event);
     await host.ensure(directorCwd(), path.join(app.getAppPath(), "skills"));
     return host.readDirectorHistory(projectId);
   });
-  ipcMain.handle("nomi:codex:interrupt", async () => {
+  ipcMain.handle("nomi:codex:interrupt", async (event) => {
+    assertTrustedSender(event);
     await host.interrupt();
     return { ok: true };
   });
-  ipcMain.handle("nomi:codex:respond-elicitation", (_event, requestId: unknown, confirmed: unknown) => {
+  ipcMain.handle("nomi:codex:respond-elicitation", (event, requestId: unknown, confirmed: unknown) => {
+    assertTrustedSender(event);
     const ok = typeof requestId === "string" && host.respondElicitation(requestId, confirmed === true);
     return { ok };
   });

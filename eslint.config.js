@@ -15,6 +15,9 @@ export default tseslint.config(
       'dist/**',
       'dist-electron/**',
       'release/**',
+      // R0 历史兼容探针产物保留；正式 pi 源码在 electron/harness/runtime/pi 参加 lint。
+      'experiments/pi-agent-runtime/dist/**',
+      'experiments/pi-agent-runtime/release/**',
       'node_modules/**',
       // Vite 预打包依赖缓存（vite.config cacheDir = .tmp/vite）——第三方 bundle，非源码，不 lint。
       '.tmp/**',
@@ -24,7 +27,8 @@ export default tseslint.config(
       'coverage/**',
       // 本地走查/探针输出目录（gitignored，含临时诊断 .mjs）——非源码，不 lint。
       '.pose-lab/**',
-      'scripts/**',
+      'scripts/**/*',
+      '!scripts/check-vocabularies*.mjs',
       'tests/ux/**',
       'tests/transport-spike/**',
       'evals/**',
@@ -35,13 +39,37 @@ export default tseslint.config(
       '.claude/**',
       '.hermes/**',
       'skills/**',
+      // design-sync（组件库同步）：.ds-sync 是外部技能暂存的转换器脚本、ds-bundle 是它的构建产物、
+      // .design-sync/support 是本地构建脚本+压平后的 CSS——三者都 gitignored，是构建工具不是产品源码，不 lint。
+      // （.design-sync/previews/ 是手写的预览组合，走 tsx，保持被 lint。）
+      '.ds-sync/**',
+      'ds-bundle/**',
+      '.design-sync/support/**',
       '**/*.config.{js,ts,mjs,cjs}',
     ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ['scripts/check-vocabularies*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: globals.node,
+    },
+  },
+  {
+    files: ['tests/network/**/*.{cjs,mjs}'],
+    languageOptions: { globals: globals.node },
+  },
+  {
+    // The regression must enter through Electron CommonJS before loading the
+    // native pi ESM island; require is intentional here, not application style.
+    files: ['tests/network/**/*.cjs'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
+    files: ['**/*.{ts,tsx,mts,cts}'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
@@ -59,7 +87,10 @@ export default tseslint.config(
       'react-hooks/exhaustive-deps': 'warn',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' }],
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' },
+      ],
       '@typescript-eslint/no-empty-object-type': 'warn',
       '@typescript-eslint/no-require-imports': 'warn',
       'no-empty': 'warn',

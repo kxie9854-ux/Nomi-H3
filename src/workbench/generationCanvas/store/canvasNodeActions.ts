@@ -1,4 +1,5 @@
 import { createGenerationNode, removeNodes, upsertNode } from '../model/graphOps'
+import { normalizeParameterEdges } from '../model/parameterReferenceSlots'
 import { resolveInsertionPosition } from './resolveInsertionPosition'
 import { tidyCanvasLayout } from './tidyCanvasLayout'
 import { getDefaultCategoryForNodeKind, type GenerationCanvasNode } from '../model/generationCanvasTypes'
@@ -8,7 +9,8 @@ import { buildCanvasNode } from '../../../../electron/capabilityCore/canvasNodeF
 import { RENDERER_NODE_FACTORY_DEPS } from './rendererNodeFactoryDeps'
 import { CLIPBOARD_OFFSET, createClipboardNodeId, createNodeId } from './canvasIds'
 import { bumpPersistRevision, isCategoryId, shouldEmitCanvasMutation, shouldPersistCanvasMutation } from './canvasGuards'
-import { getHistoryFlags, pushUndoSnapshot } from '../events/canvasUndoJournal'
+import { getHistoryFlags, getUndoJournalGeneration, pushUndoSnapshot } from '../events/canvasUndoJournal'
+import { getActiveCanvasGestureContext } from '../events/canvasGestureContext'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { useWorkbenchStore } from '../../workbenchStore'
 import type { CanvasNodeActions, CanvasSliceCreator } from './canvasStoreTypes'
@@ -27,14 +29,18 @@ function reconcileTimelineForDeletedNodes(nodeIds: readonly string[]): void {
 // Cmd+Z 一撤直接跳回上一个结构操作,把整段输入连带丢掉(「回退不到我之前的地方」,
 // 2026-06-12 用户复现)。同一节点的连续编辑算一步;换节点或停顿 >3s 开新一步。
 const EDIT_BURST_WINDOW_MS = 3000
-let lastEditBurst = { nodeId: '', at: 0 }
+let lastEditBurst = { nodeId: '', at: 0, generation: -1 }
 
 function pushEditBurstBarrier(nodeId: string, state: unknown): void {
+  // Agent edits/compensation own a transaction barrier. They must not start or
+  // prolong a user's typing burst and swallow the next manual edit's Undo.
+  if (getActiveCanvasGestureContext()?.suppressUndoBarriers) return
   const now = Date.now()
-  if (lastEditBurst.nodeId !== nodeId || now - lastEditBurst.at > EDIT_BURST_WINDOW_MS) {
+  const generation = getUndoJournalGeneration()
+  if (lastEditBurst.generation !== generation || lastEditBurst.nodeId !== nodeId || now - lastEditBurst.at > EDIT_BURST_WINDOW_MS) {
     pushUndoSnapshot(state)
   }
-  lastEditBurst = { nodeId, at: now }
+  lastEditBurst = { nodeId, at: now, generation }
 }
 
 export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (set, get) => ({
@@ -98,7 +104,9 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     set((state) => {
       const node = state.nodes.find((candidate) => candidate.id === nodeId)
       if (!node) return
+      const declarationChanged = 'meta' in patch && node.meta?.parameterReferenceSlots !== patch.meta?.parameterReferenceSlots
       Object.assign(node, patch)
+      if (declarationChanged) state.edges = normalizeParameterEdges(state.nodes, state.edges)
       if (shouldPersistCanvasMutation(options)) bumpPersistRevision(state)
     })
     emitCanvasGesture([{ type: 'canvas.node.updated', payload: { nodeId, patch } }])
@@ -111,10 +119,15 @@ export const createCanvasNodeActions: CanvasSliceCreator<CanvasNodeActions> = (s
     pushUndoSnapshot(currentState)
     set((state) => {
       const patches = new Map(applicable.map((update) => [update.nodeId, update.patch]))
+      let declarationChanged = false
       for (const node of state.nodes) {
         const patch = patches.get(node.id)
-        if (patch) Object.assign(node, patch)
+        if (patch) {
+          if ('meta' in patch && node.meta?.parameterReferenceSlots !== patch.meta?.parameterReferenceSlots) declarationChanged = true
+          Object.assign(node, patch)
+        }
       }
+      if (declarationChanged) state.edges = normalizeParameterEdges(state.nodes, state.edges)
       bumpPersistRevision(state)
       Object.assign(state, getHistoryFlags())
     })

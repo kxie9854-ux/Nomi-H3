@@ -134,6 +134,12 @@ function ManagedDeferredNodeVideo({
   ...props
 }: React.VideoHTMLAttributes<HTMLVideoElement> & { mediaKey: string }): JSX.Element {
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
+  React.useEffect(() => {
+    // React sets the src property before the node is attached in some Electron
+    // renderer transitions. Explicitly starting the load keeps a queued media
+    // retry from sitting at NETWORK_EMPTY forever.
+    videoRef.current?.load()
+  }, [mediaKey, props.src])
   const bindVideoRef = React.useCallback((next: HTMLVideoElement | null) => {
     videoRef.current = replaceDeferredNodeVideoElement(videoRef.current, next)
   }, [])

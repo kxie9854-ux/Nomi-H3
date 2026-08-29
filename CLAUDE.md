@@ -3,10 +3,12 @@
 > **怎么读这份文件（3 层，按访问频率分，每层只活一次，别重复 —— 这套分层本身是为了「文件再长注意力也不消散」）**：
 > - **L0 每轮** = `.claude/hooks/self-check.sh`（hook，每条消息自动注入「三闸 + 核心原则 + 近期坑」）——salience 层，本文件**不再复述它**。
 > - **L1 always 加载** = 本文件：项目事实 + 命令 + **P1–P5** + **D1–D5** + 规则索引。**每次 session 读完再动手。**保持精简（一屏左右）。
-> - **L2 触发才查** = `docs/engineering-rules.md`：R1–R15 详解 + 工作流框架 + 技能库映射 + 固化纪律。规则索引指明每条住哪，触发某条才去读它。（`docs/coding-standards.md` = 通用编码规范补充。）
+> - **L2 触发才查** = `docs/engineering-rules.md`：R1–R21 详解 + 工作流框架 + 技能库映射 + 固化纪律。规则索引指明每条住哪，触发某条才去读它。（`docs/coding-standards.md` = 通用编码规范补充。）
+> - **查现状（动手前）** = `docs/ARCHITECTURE-NOW.md`：每个子系统**现在真正跑的是什么**（带 file:line）+「常见误解」列。**读任何 `docs/plan/` 之前先过一眼**——方案文档会过期且不带过期标记。搜不到东西时查 `docs/GLOSSARY.md`（同一个东西的多个叫法：自动剪辑=AI 剪辑=EditPlan=E2…）。（2026-08-27 加：有人把 6 月的 agent 方案当现状，整份调研建立在「引擎是 `runAgentChatV2`」这个已被 pi SDK 取代的前提上；同一轮还因搜「自动剪辑」搜不到而重新发明了已批准的 E1/E2/E3 总纲。）
 >
 > **维护纪律（防它再胖回来 —— 治本）**：本文件是**策展的，不是 append 的**。新踩的坑/教训**默认进记忆**（`memory/`，按相关性召回）或 hook 的 `violations.log`，**不塞这里**；只有「反复出现 + 永远相关」的原则才提升进 L1、细节进 L2；每隔一阵压实一次。**加规则前先问「这条非得 always 加载吗」——不是，就别进 L1。**
 > 真相源仍单一：规则索引 + 各处指针指明每条住哪，不另立第二份。改触发清单同步 `self-check.sh`，规则细节只改 L2。注：`.claude/` 被 gitignore，hook 不随 git 走，换机/新 worktree 需手动复制 `.claude/hooks/` 与 settings.json 的 hooks 块。
+> **Codex 侧镜像 `AGENTS.md` 由 `scripts/gen-agents-md.mjs` 从 `CLAUDE.md` 生成，禁止手改**：改纪律只改 `CLAUDE.md`，再跑 `pnpm run gen:agents`；`check:agents-sync` 在 gates 链里拦漂移。（2026-08-25 加：此前两份手工维护，08-15 Codex 只写自己那份、08-20 我只写自己那份，双方都以为 R16 是末号，**双双取名 R17**，`engineering-rules.md` 一度两个 `## R17`，漂了 10 天。）
 
 ## 项目概览
 
@@ -29,11 +31,12 @@ Nomi：本地优先 AI 视频创作工作台。
 | `pnpm run check:filesize` | 巨壳文件门岗 |
 | `pnpm run check:tokens` | 设计 token 门岗（禁任意 px 字号/圆角、hex 色、默认色板；棘轮只减不增）|
 | `pnpm run check:heavy-path` | 重活门岗（同步图像编码 / base64 进 store / 尺寸双真相源；棘轮只减不增）|
+| `pnpm run check:vocabularies` | 单一语义 owner 门岗（AST 扫状态/阶段词表；新增、复制、成员/位置漂移、陈旧登记或 debt 增长都会红）|
 | `pnpm run check:i18n` | 可见文字国际化门岗（禁止新增硬编码 UI 文案；遗留基线只减不增）|
 | `pnpm run check:audit` | 审计节奏提醒（≥25 commit 提示） |
 | `npx skills experimental_install` | 从 `skills-lock.json` 还原 `.claude/skills/`（换机/协作者用） |
 
-**Push 前必须全过**：`check:filesize` → `check:tokens` → `check:i18n` → `check:heavy-path` → `lint:ci` → `typecheck` → `test` → `build`
+**Push 前必须全过**：`check:filesize` → `check:tokens` → `check:i18n` → `check:heavy-path` → `check:vocabularies` → `lint:ci` → `typecheck` → `test` → `build`
 
 ## 五条核心原则
 
@@ -52,14 +55,9 @@ Nomi：本地优先 AI 视频创作工作台。
 
 每轮由 hook（`self-check.sh`，L0）自动顶在眼前，不在此复述。一句话：**动手写码前**想清楚(P5)——用户可见先读设计系统+出可体验样张+拍板(R8，**改/扩现有 UI 先看它真实样子=读完整外壳组件或真实截图，样张是真实布局+改动、不是脑补**)、**加/挪任何控件先过设计系统 §1.5 控件层级规则**（判 L1 常驻还是 L2/L3/L4·查这个面常驻预算还剩几个·确认这动作别处是不是已经有家了=一功能一个家；手法优先级 **先分组→再去重→再归位→最后才收纳**，别一上来就往 ▾ 里塞；动作不许压在内容上）、碰三方库/选型·引入新框架先 Context7+web 查最新现役框架(R5)、多文件先 `docs/plan`(R4)、取舍给对比表(R3)；**报完成/交付给用户看前**全绿≠完成(P3)——和样张对账+真机走查(R13，**眼见链：截图自己亲眼 Read 过才算，验证物=用户所见物——同构建/同入口/同平台分支，改哪面验哪面**)+ **功能交付另建「真实用户任务」端到端测试系统、带真实任务跑通使用闭环、把过程中冒出的体验/设计/UI/UX/产品/功能问题全修掉才算真完成(R16)**；**push 前**五门全过(R11)。贯穿：根因不症状(P2)、加新删旧无并行版(P1)、derive 不 hardcode、分层≤800 行(R9)。细节查 `docs/engineering-rules.md`。
 
-## 每日论文雷达（每 session 第一条消息自动）
+## 供应商模型雷达（每 session 第一条消息自动）
 
-**时间计算器 + 去重**：每个 session 收到用户**第一条消息**时，先比对 `currentDate`（context 里给）与 `docs/research/` 里**最新一份 `<date>-radar.md` 的日期**：
-- 若**今天还没有** radar → **先静默跑 `nomi-research-radar` 技能**（额度默认授权，不问），出 `docs/research/<今天>-radar.md`，回答用户时**用一两句带出当天最该动的 1-2 件事**，再处理用户原本的请求。
-- 若**今天已有** radar → 跳过，正常回答（同一天不重复跑）。
-
-**抓的时候不是随便抓**（维度见技能，每篇过这关才进报告）：① **最新**——只吃近 6 月、每条标日期、写「最新/SOTA」前确认现在还成立(R5)；② **火不火**——有无官方代码/star、项目页、讨论度、出自哪个 lab；③ **有没有用**——对 Nomi 真实痛点(跨镜身份/转场/拆镜头/评测…)的相关度与可落地度；④ **成熟度**——training-free / 有代码 / 可复现 优先。低于 bar 的筛掉，别堆噪音。
-
+每个 session 收到用户第一条消息时跑 `pnpm run radar:models`（apimart / kie 有没有上新生图/生视频/音频模型）。**这条几乎零成本**——发现是确定性脚本（抓 llms.txt → 与快照做差 → 与我们目录交叉引用），不烧额度；只有 `新增 > 0` 时才起 `nomi-model-radar` 技能做分诊。脚本报错 = 明说「今天没查成」，**不许**说成「没有新模型」。用户点头要接某个 → **先出接入方案**（契约摘要+档案设计+分档理由），点头后才写码（2026-08-27 用户拍板）。快照要等用户看过再 `-- --update-baseline`，提前更新会把「新增」吃掉。
 ## 规则索引（R# 详解在 `docs/engineering-rules.md`）
 
 | # | 规则 | 一句话 |
@@ -77,10 +75,14 @@ Nomi：本地优先 AI 视频创作工作台。
 | R11 | 自动 commit/push | 验证通过即自己 commit + push；五门全过才能 commit |
 | R12 | → R9 巨壳 | `check:filesize` 门岗；白名单基线只降不升 |
 | R13 | 体验走查 | Playwright 走真实用户旅程 J1-J5（创作目标，不是功能探索）；截图人眼判断 |
-| R14 | 周期审计 | ≥25 commit 或发版前：多维 subagent 审计 + 走查 + `docs/audit` 文档 |
+| R14 | 周期审计 | ≥25 commit 或发版前：多维 subagent 审计 + 走查 + `docs/audit` 文档；固定含 R14.1「同一语义有几份定义」七维横扫与对偶路径检查，机器门岗只覆盖词表 owner |
 | R15 | 可见文字国际化 | 所有用户可见文字必须走 i18n；默认 `zh-CN`，当前仅支持 `zh-CN` / `en`；门禁基线只减不增 |
 | R16 | 真实任务测试系统=完成的一部分 | 功能交付（尤其用户可见/体感）必建几条「真实用户任务」端到端测试、带真实任务跑通使用闭环（用 R13 走查法）、把过程中冒出的体验/设计/UI/UX/产品感/功能问题**全修掉**——才算真完成，不留半成品（R16 = P3 完成标准的量化门）|
-| R17 | 重活门岗（卡死一族） | 同步图像编码 / base64 进 store / 尺寸双真相源三条棘轮：`check:heavy-path`，基线只减不增（P2 通用性判定的第一个落地件）|
+| R17 | 重活门岗（本地看不出、线上/CI 才炸的一族） | 这族写法做成棘轮：`check:heavy-path`，基线只减不增；**加规则必须先验它会红**（规则清单以脚本 `RULES` 为准，别在文档里数条数）|
+| R18 | 测试等待门岗 | 测试禁私有墙钟 waitFor / `Date.now()` 截止轮询（单跑绿、并行翻红一族）：`check:test-waits` 硬零；等编排链用 `waitForProduction` |
+| R19 | 解决状态必须可交付 | 侧分支只能称“已实现”；验证通过且提交已进入远端目标分支后才能称“已解决”（原 R17，2026-08-25 与「重活门岗」撞号后改号）|
+| R20 | 造轮子前先过 build-vs-buy 闸 | 写任何**通用能力**前三问：① 这是不是通用问题（不是 Nomi 独有）？② 同类产品/成熟方案怎么做的（Context7+web 实查，别凭记忆）？③ 自研它在不在我们护城河上？**不在护城河上又碰钱碰信任的**（标准协议、边界校验、生命周期语义）→ 用标准实现或至少**对齐标准语义**；在护城河上的（账本/预算/一致性/权限）→ 自研到底。已交学费：2026-08-25 全应用地基审计扫出手写 MCP 协议缺取消绑定/运行时校验/版本协商、IPC 缺来源绑定（`docs/audit/2026-08-25-app-wide-foundation-audit.md`）|
+| R21 | 高风险修复必须交根因合同 | 修 provider/媒体/workflow/task/runtime 等高风险路径前先读 `.agents/skills/root-cause-remediation/SKILL.md`，提交 `docs/fixes/*.root-cause.json`，证明类根因、入口集、不变量、迁移和变化中的回归测试；`check:root-cause-contracts` 硬拦只修症状或无证据修复 |
 
 ## 决策自治
 

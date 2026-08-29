@@ -197,6 +197,8 @@ export async function defaultCodexChatRun(input: CodexChatRunInput): Promise<Cod
       };
       child.stdout?.on("data", (chunk) => absorb(chunk, "stdout"));
       child.stderr?.on("data", (chunk) => absorb(chunk, "stderr"));
+      // The child may exit before stdin flushes; EPIPE is only the stream-level echo.
+      child.stdin?.on("error", () => {});
       child.stdin?.end(input.prompt);
       child.on("error", (error) => {
         const message = (error as NodeJS.ErrnoException).code === "ENOENT"

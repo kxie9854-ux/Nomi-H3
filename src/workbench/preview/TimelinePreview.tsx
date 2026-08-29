@@ -27,6 +27,9 @@ import { ensureTimelineExportFilmNode } from '../generationCanvas/agent/timeline
 import { buildWorkspaceFileUrl } from '../explorer/workspaceFileDrag'
 import { resolveTimelineClipPlaybackUrl } from '../timeline/timelinePlaybackUrl'
 import { usePreviewVideoPlayheadSync } from './usePreviewVideoPlayheadSync'
+import { findTimelineTransitionForClipType, resolveTimelineTransitionsAtFrame } from '../timeline/timelineTransition'
+import { TimelineTransitionLayer } from './TimelineTransitionLayer'
+import { resolvePreviewMediaVolume } from '../timeline/clipAudio'
 
 type TimelinePreviewProps = {
   activeClips: TimelineClip[]
@@ -86,6 +89,12 @@ export default function TimelinePreview({ activeClips, aspectRatio, fps, playhea
   const videoClip = findClip(activeClips, 'video')
   const imageClip = findClip(activeClips, 'image')
   const audioClip = findClip(activeClips, 'audio')
+  const activeTransitions = React.useMemo(
+    () => resolveTimelineTransitionsAtFrame(timeline, playheadFrame),
+    [playheadFrame, timeline],
+  )
+  const imageTransition = findTimelineTransitionForClipType(activeTransitions, 'image')
+  const videoTransition = findTimelineTransitionForClipType(activeTransitions, 'video')
   const videoUrl = resolveTimelineClipPlaybackUrl(videoClip, generationNodes)
   // 预览播放器此前只诚实报错、不自愈：同一个 HEVC 存量片段在画布节点点一下就能自己修好，
   // 在成片预览里却永远播不了。守卫内核共用后，这里也能当场修（转码产物复用，不重复转）。
@@ -119,6 +128,7 @@ export default function TimelinePreview({ activeClips, aspectRatio, fps, playhea
     isConverting: exportStatus === 'converting',
     progressPercent: exportRatio * 100,
   })
+  const stopPlayback = React.useCallback(() => setTimelinePlaying(false), [setTimelinePlaying])
 
   usePreviewVideoPlayheadSync(videoRef, { videoClip, videoUrl, playheadFrame, fps, playing })
 
@@ -126,9 +136,9 @@ export default function TimelinePreview({ activeClips, aspectRatio, fps, playhea
   React.useEffect(() => {
     const video = videoRef.current
     if (!video) return
-    video.volume = volume
+    video.volume = resolvePreviewMediaVolume(videoClip, playheadFrame, volume, muted)
     video.muted = muted
-  }, [videoUrl, volume, muted])
+  }, [videoUrl, videoClip, playheadFrame, volume, muted])
 
   // 配乐 <audio> 播放（playhead 同步 + 播放/暂停 + 音量静音）抽到 hook（R9）。
   const { audioRef, audioUrl } = usePreviewBgmPlayback(audioClip, { playing, playheadFrame, fps, volume, muted })
@@ -451,14 +461,25 @@ export default function TimelinePreview({ activeClips, aspectRatio, fps, playhea
             {playbackError}
           </div>
         ) : null}
-        {imageClip?.url ? (
+        {imageClip?.url && !imageTransition ? (
           <img className={cn(
             'workbench-preview-player__image',
             'absolute inset-0 z-[1] w-full h-full bg-transparent select-none will-change-transform',
             imageFitClass,
           )} src={imageClip.url} alt={imageClip.label || ''} style={imageStyle} />
         ) : null}
-        {videoUrl ? (
+        {imageTransition ? (
+          <TimelineTransitionLayer
+            resolved={imageTransition}
+            playheadFrame={playheadFrame}
+            fps={fps}
+            stageSize={stageSize}
+            zIndex={1}
+            onPlaybackError={setPlaybackError}
+            onPlaybackStop={stopPlayback}
+          />
+        ) : null}
+        {videoUrl && !videoTransition ? (
           <video
             ref={videoRef}
             className={cn(
@@ -475,6 +496,20 @@ export default function TimelinePreview({ activeClips, aspectRatio, fps, playhea
               setTimelinePlaying(false)
             }}
             onLoadedMetadata={heal.onLoadedMetadata}
+          />
+        ) : null}
+        {videoTransition ? (
+          <TimelineTransitionLayer
+            resolved={videoTransition}
+            playheadFrame={playheadFrame}
+            fps={fps}
+            playing={playing}
+            volume={volume}
+            muted={muted}
+            stageSize={stageSize}
+            zIndex={2}
+            onPlaybackError={setPlaybackError}
+            onPlaybackStop={stopPlayback}
           />
         ) : null}
         {/* 配乐 <audio>：无画面，仅播放当前音频轨 clip 的声音（试听）。currentTime/play 由上方 effect 跟 playhead。 */}

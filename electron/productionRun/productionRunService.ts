@@ -19,12 +19,17 @@ import { buildProductionDeepLink } from './productionDeepLink'
 import { applyRunControl } from './productionRunControl'
 import { createDriverOps, isShotGate } from './productionRunDriverOps'
 import { withEventTap } from './productionRunEventTap'
-import { safeExternalText, safeProductionContract } from './productionRunProjectionSanitizer'
+import { safeExternalText, safeProductionContract, safeShotId } from './productionRunProjectionSanitizer'
 import { assertStoryboardSourceFresh, createArtifactOperations } from './productionRunArtifactOperations'
 import { assertStoryboardSourceApproved } from './productionRunReducer'
+import { MEANINGFUL_EVENT_TYPES } from './productionRunMeaningfulEvents'
 import { readAutomationPolicySettings } from '../settings/automationPolicySettings'
 import { assertProductionPolicyReady } from './productionPolicyReadiness'
 import { normalizeTrustLevel, trustLevelOf } from './productionRunTypes'
+import { approvalReceiptForGate } from './productionRunApprovalReceipt'
+import { isAnchorCheckpointGate } from './anchorCheckpoint'
+import { kickBatchSchedulerForRun } from './batchSchedulerKick'
+import type { ApprovalReceiptAuthority } from '../capabilityCore/approvalReceipt'
 import {
   metadataProjection,
   storyboardMetadata,
@@ -32,6 +37,7 @@ import {
 import type {
   AutomationPolicy,
   CreateProductionRunInput,
+  ProductionGenerationPlan,
   ProductionRun,
   RunEvent,
   RunCommand,
@@ -41,6 +47,9 @@ type SafeProductionGate = Omit<ProductionRun['gates'][number], 'planHash' | 'con
   contract?: ReturnType<typeof safeProductionContract>
 }
 type SafeProductionJob = Pick<ProductionRun['jobs'][number], 'jobId' | 'stageId' | 'status' | 'attempt' | 'provider' | 'model' | 'nodeId' | 'parentJobId' | 'retryCount' | 'retryReason' | 'progressPercent' | 'lastPollAt' | 'lastVendorStateChangeAt' | 'createdAt' | 'updatedAt' | 'errorCode'>
+  // metadata 只投影 shotId 这一格，故显式写死形状——不 Pick 整个 metadata：那是 Record<string, unknown> 袋子
+  // （还装着 ffDesc/dialogue/retryDirective 等未脱敏长文本），类型上承诺全量、实际只发一格 = 类型说谎。
+  & { metadata?: { shotId: string } }
 export type ProductionRunProjection = {
   schemaVersion: number
   runId: string
@@ -103,31 +112,11 @@ type ServiceDeps = {
   }>
   /** A5：每批持久化事件的旁路监听（系统通知等）。异常被吞，绝不影响制作主流程。 */
   onEvents?: (events: RunEvent[], run: ProductionRun) => void
+  /** Optional main-process receipt owner. When supplied, gate.decide must verify and consume a receipt. */
+  approvalReceiptAuthority?: ApprovalReceiptAuthority
+  /** Current project document revision, resolved by the project owner rather than the command body. */
+  projectRevisionResolver?: (projectId: string) => number | undefined
 }
-
-const MEANINGFUL_EVENT_TYPES = new Set([
-  'run.created',
-  'run.status.changed',
-  'run.stage.changed',
-  'stage.updated',
-  'gate.waiting',
-  'gate.candidates',
-  'gate.decided',
-  'artifact.ready',
-  'artifact.adopted',
-  'artifact.reviewed',
-  'job.ready',
-  'job.adopted',
-  'job.submission_unknown',
-  'job.needs_attention',
-  'job.vendor_state_stale',
-  'skill.loaded',
-  'skill.applied',
-  'plan.proposed',
-  'plan.attached',
-  // W1.5：审片判决（per-shot 过检/红标）——纳入可转述事件，让 nomi_subscribe_run 读得到。
-  'qa.verdict',
-])
 
 function identifier(value: string, label: string): string {
   const normalized = String(value || '').trim()
@@ -166,18 +155,25 @@ function safeRunProjection(run: ProductionRun): Omit<ProductionRunProjection, 'a
       ...(gate.directionCandidates ? { directionCandidates: gate.directionCandidates.map((candidate) => ({ key: candidate.key, title: safeExternalText(candidate.title), oneLiner: safeExternalText(candidate.oneLiner) })) } : {}),
       ...(gate.decidedChoiceKey ? { decidedChoiceKey: gate.decidedChoiceKey } : {}),
     })),
-    jobs: run.jobs.map((job) => ({
-      jobId: job.jobId, stageId: job.stageId, status: job.status, attempt: job.attempt,
-      provider: job.provider, model: job.model, ...(job.nodeId ? { nodeId: job.nodeId } : {}),
-      ...(job.parentJobId ? { parentJobId: job.parentJobId } : {}),
-      ...(job.retryCount !== undefined ? { retryCount: job.retryCount } : {}),
-      ...(job.retryReason ? { retryReason: safeExternalText(job.retryReason) } : {}),
-      ...(job.progressPercent !== undefined ? { progressPercent: job.progressPercent } : {}),
-      ...(job.lastPollAt ? { lastPollAt: job.lastPollAt } : {}),
-      ...(job.lastVendorStateChangeAt ? { lastVendorStateChangeAt: job.lastVendorStateChangeAt } : {}),
-      ...(job.errorCode ? { errorCode: job.errorCode } : {}),
-      createdAt: job.createdAt, updatedAt: job.updatedAt,
-    })),
+    jobs: run.jobs.map((job) => {
+      // 多镜批次里 job↔镜头的对应关系（agent 建批时自己传的 shotId）。没有它，读回来的 jobs 只能按 status
+      // 计数、认不出哪个 job 是哪一镜——返工/对账全瞎。老 run / 单镜链无此字段 → 不发（等价「默认镜」）。
+      const shotId = safeShotId(job.metadata?.shotId)
+      return {
+        jobId: job.jobId, stageId: job.stageId, status: job.status, attempt: job.attempt,
+        provider: job.provider, model: job.model, ...(job.nodeId ? { nodeId: job.nodeId } : {}),
+        ...(shotId ? { metadata: { shotId } } : {}),
+        ...(job.parentJobId ? { parentJobId: job.parentJobId } : {}),
+        ...(job.retryCount !== undefined ? { retryCount: job.retryCount } : {}),
+        ...(job.retryReason ? { retryReason: safeExternalText(job.retryReason) } : {}),
+        ...(job.progressPercent !== undefined ? { progressPercent: job.progressPercent } : {}),
+        ...(job.providerStatus ? { providerStatus: safeExternalText(job.providerStatus) } : {}),
+        ...(job.lastPollAt ? { lastPollAt: job.lastPollAt } : {}),
+        ...(job.lastVendorStateChangeAt ? { lastVendorStateChangeAt: job.lastVendorStateChangeAt } : {}),
+        ...(job.errorCode ? { errorCode: job.errorCode } : {}),
+        createdAt: job.createdAt, updatedAt: job.updatedAt,
+      }
+    }),
     createdAt: run.createdAt,
     updatedAt: run.updatedAt,
   }
@@ -295,6 +291,17 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     if (trustLevelOf(run.policy) === 'budget_only') void autoApproveGate(run.projectId, run.runId, 'gate-direction-v1')
     else void proposeDirections(run)
     return runProjection(run, projectRootResolver, previewSecret)
+  }
+
+  function createGenerationDraft(input: {
+    operationId: string
+    projectId: string
+    origin: { host: string; actorId?: string }
+    candidate: ProductionGenerationPlan['candidate']
+    currency?: string
+    policy?: Partial<AutomationPolicy>
+  }): ProductionRun {
+    return repository.createGenerationDraft(input)
   }
 
   function writeProjectJson(projectId: string, relativePath: string, value: unknown): void {
@@ -519,6 +526,13 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         return { run: current, events: [] }
       }
     }
+    const gateReceipt = approvalReceiptForGate(
+      deps.approvalReceiptAuthority,
+      safeProjectId,
+      safeRunId,
+      runCommand,
+      deps.projectRevisionResolver,
+    )
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved') {
       const current = requireRun(safeProjectId, safeRunId)
       const gateId = typeof runCommand.payload.gateId === 'string' ? runCommand.payload.gateId.trim() : ''
@@ -534,6 +548,11 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       }
     }
     const result = repository.execute(safeProjectId, safeRunId, runCommand)
+    if (gateReceipt && deps.approvalReceiptAuthority) {
+      // The Run event is durable before receipt consumption. A crash can only leave
+      // a replayable receipt against an already-decided gate; it cannot reopen it.
+      deps.approvalReceiptAuthority.consumeReceipt(gateReceipt.token)
+    }
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved' && runCommand.payload.gateId === 'gate-direction-v1') {
       void proposeScript(result.run)
     }
@@ -601,6 +620,13 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     if (runCommand.type === 'gate.decide' && runCommand.payload.status === 'approved' && runCommand.payload.gateId === `gate-export-v${result.run.planVersion}`) {
       void driveExport(result.run)
     }
+    // P4 §3.2 锚定妆照检查点：决议落库 → 重踢多镜批 scheduler（与上面 freeze/sample/shot 门的 driveGeneration
+    // 重踢同一个家——任何入口的 gate.decide 都经这里，入口自己不用记得踢）。approved = 放行镜头批；rejected =
+    // 免费空 tick（derivation 对 rejected 只在有新 attempt 时才重派锚，见 batchScheduleDerivation）。scheduler
+    // 构造依赖 appIntegration 接线，故经晚绑定插槽（batchSchedulerKick.ts 有为什么）。
+    if (runCommand.type === 'gate.decide' && decidedGate && isAnchorCheckpointGate(decidedGate)) {
+      kickBatchSchedulerForRun(safeProjectId, safeRunId)
+    }
     return result
   }
 
@@ -635,9 +661,15 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       for (const summary of summaries) {
         let current = repository.read(safeProjectId, summary.runId)
         if (!current || ['completed', 'cancelled'].includes(current.status)) continue
+        // Semantic single-shot runs own recovery through ProductionGenerationSubmission
+        // (resume/poll/reconcile). The legacy playbook driver must not rewrite their
+        // durable provider state to submission_unknown or kick a second submit.
+        const isSemanticSingleShot = current.playbook.name === 'generation.single-shot'
+          && current.generationPlan?.operationId === current.runId
         let changedUnknown = false
         for (const job of current.jobs) {
           if (!['submitting', 'provider_accepted', 'polling', 'retry_wait', 'downloading', 'validating_technical', 'validating_content'].includes(job.status)) continue
+          if (isSemanticSingleShot) continue
           try {
             current = executeInternal(safeProjectId, current.runId, current, 'job.status', {
               jobId: job.jobId,
@@ -679,7 +711,6 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   }
 
   function readProjection(projectId: string, runId: string): ProductionRunProjection {
-    void resumeUnfinishedRuns(projectId)
     return runProjection(requireRun(projectId, runId), projectRootResolver, previewSecret)
   }
 
@@ -744,15 +775,16 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
   }
 
   function listFull(projectId: string): ProductionRun[] {
-    void resumeUnfinishedRuns(projectId)
     return repository.list(identifier(projectId, 'project')).map((summary) => requireRun(projectId, summary.runId))
   }
 
   return {
-    createDraft, readProjection, readFull, readEvents, readArtifactProjection, readArtifactContent, readScriptDraft,
+    // The semantic generation submission adapter is a thin orchestration layer;
+    // ProductionRun's repository remains its only durable owner.
+    repository,
+    createDraft, createGenerationDraft, readProjection, readFull, readEvents, readArtifactProjection, readArtifactContent, readScriptDraft,
     requestArtifactRevision, reviewArtifact, materializeStoryboard, resolveArtifactPreview, command, proposeScript, proposeStoryboard,
     resumeUnfinishedRuns, listProjections, listFull,
   }
 }
-
 export type ProductionRunService = ReturnType<typeof createProductionRunService>

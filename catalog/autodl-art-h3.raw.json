@@ -115,7 +115,7 @@
       }
     },
     "input_example": "{\"resolution\": \"输出视频分辨率（选填，可选值：480p竖、768p竖、1080p竖、480p横、768p横、1080p横，默认值：768p竖）\", \"ref_audio_0\": \"参考音频 URL（必填，支持 MP3、WAV、MP4、FLAC）\", \"ref_image_0\": \"参考图片 URL（必填，支持 JPG、PNG、WebP）\", \"audio_duration\": \"音频截取时长，单位为秒（选填，1-15秒，默认值：5秒）\"}",
-    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"158a0bba46b6a42f9b175ecdeaea2ac4\"}, \"request_id\": \"0782accb6b05116890256ffaa01cb283\"}"
+    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"example-id\"}, \"request_id\": \"example-id\"}"
   },
   "minimax_h3_image_audio_to_video_v2": {
     "name": "H3多图多音频生视频",
@@ -374,7 +374,7 @@
       }
     },
     "input_example": "{\"seed\": \"随机种子（选填，整数，用于控制生成结果的随机性，相同参数和相同Seed通常可获得相近的生成结果）\", \"prompt\": \"视频生成提示词（必填，1-10000个字符，建议描述主体、动作、场景、镜头运动等）\", \"duration\": \"视频时长（选填，整数，1-10秒，默认5秒）\", \"resolution\": \"输出分辨率（选填，可选值：480p竖、768p竖、1080p竖、480p横、768p横、1080p横，默认768p竖）\", \"ref_audio_0\": \"参考音频URL（选填，支持MP3/WAV/MP4/FLAC）\", \"ref_audio_1\": \"参考音频URL（选填，支持MP3/WAV/MP4/FLAC）\", \"ref_audio_2\": \"参考音频URL（选填，支持MP3/WAV/MP4/FLAC）\", \"ref_image_0\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_1\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_2\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_3\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_4\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_5\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_6\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_7\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_8\": \"参考图片URL（选填，支持JPG/PNG/WebP）\"}",
-    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"158a0bba46b6a42f9b175ecdeaea2ac4\"}, \"request_id\": \"0782accb6b05116890256ffaa01cb283\"}"
+    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"example-id\"}, \"request_id\": \"example-id\"}"
   },
   "minimax_h3_image_audio_to_video_v2_15s": {
     "name": "H3多图多音频生视频15秒",
@@ -615,7 +615,7 @@
       }
     },
     "input_example": "{\"seed\": \"随机种子（选填，整数，用于控制生成结果的随机性，相同参数和相同Seed通常可获得相近的生成结果）\", \"prompt\": \"视频生成提示词（必填，1-10000个字符，建议描述主体、动作、场景、镜头运动等）\", \"duration\": \"视频时长（选填，整数，1-15秒，默认5秒）\", \"resolution\": \"输出分辨率（选填，可选值：480p竖、768p竖、480p横、768p横，默认768p竖）\", \"ref_audio_0\": \"参考音频URL（选填，支持MP3/WAV/MP4/FLAC）\", \"ref_audio_1\": \"参考音频URL（选填，支持MP3/WAV/MP4/FLAC）\", \"ref_audio_2\": \"参考音频URL（选填，支持MP3/WAV/MP4/FLAC）\", \"ref_image_0\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_1\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_2\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_3\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_4\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_5\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_6\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_7\": \"参考图片URL（选填，支持JPG/PNG/WebP）\", \"ref_image_8\": \"参考图片URL（选填，支持JPG/PNG/WebP）\"}",
-    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"158a0bba46b6a42f9b175ecdeaea2ac4\"}, \"request_id\": \"0782accb6b05116890256ffaa01cb283\"}"
+    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"example-id\"}, \"request_id\": \"example-id\"}"
   },
   "minimax_h3_lightx2v": {
     "name": "H3首尾帧生成视频",
@@ -722,7 +722,7 @@
       }
     },
     "input_example": "{\"prompt\": \"视频生成提示词（必填，建议描述主体、动作、场景、镜头等）\", \"duration\": \"视频时长（选填，整数，1-15 秒，默认5秒）\", \"last_frame\": \"尾帧图片 URL（必填，支持 JPG/PNG/WebP）\", \"resolution\": \"输出分辨率（选填，可选值：480p竖、480p横、768p竖、768p横，默认值768竖）\", \"first_frame\": \"首帧图片 URL（必填，支持 JPG/PNG/WebP）\"}",
-    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"158a0bba46b6a42f9b175ecdeaea2ac4\"}, \"request_id\": \"0782accb6b05116890256ffaa01cb283\"}"
+    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"example-id\"}, \"request_id\": \"example-id\"}"
   },
   "minimax_h3_lightx2v_no_pic": {
     "name": "H3文生视频",
@@ -807,7 +807,7 @@
       }
     },
     "input_example": "{\"prompt\": \"视频生成提示词（必填，建议描述主体、动作、场景、镜头等）\", \"duration\": \"视频时长（选填，整数，1-15 秒，默认5秒）\", \"resolution\": \"输出分辨率（选填，可选值：480p竖、480p横、768p竖、768p横，默认值768竖）\"}",
-    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"158a0bba46b6a42f9b175ecdeaea2ac4\"}, \"request_id\": \"0782accb6b05116890256ffaa01cb283\"}"
+    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"example-id\"}, \"request_id\": \"example-id\"}"
   },
   "minimax_h3_lightx2v_v5": {
     "name": "H3多图参考生视频",
@@ -1048,7 +1048,7 @@
       }
     },
     "input_example": "{\"seed\": \"随机种子（选填，整数，用于控制生成结果的随机性，相同参数和相同Seed通常可获得相近的生成结果）\", \"prompt\": \"视频生成提示词（必填，建议描述主体、动作、场景、镜头等）\", \"duration\": \"视频时长（选填，整数，1-10 秒，默认5秒）\", \"resolution\": \"输出分辨率（选填，可选值：480p竖、480p横、1080p横、768p竖、768p横、1080p竖、480p(1:1)、768p(1:1)、1080p(1:1)，默认值768p竖）\", \"ref_image_0\": \"图片 URL（必填，支持 JPG/PNG/WebP）\", \"ref_image_1\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_2\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_3\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_4\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_5\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_6\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_7\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_8\": \"图片 URL（选填，支持 JPG/PNG/WebP）\"}",
-    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"158a0bba46b6a42f9b175ecdeaea2ac4\"}, \"request_id\": \"0782accb6b05116890256ffaa01cb283\"}"
+    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"example-id\"}, \"request_id\": \"example-id\"}"
   },
   "minimax_h3_lightx2v_v5_15s": {
     "name": "H3多图生视频15秒",
@@ -1264,6 +1264,6 @@
       }
     },
     "input_example": "{\"seed\": \"随机种子（选填，整数，用于控制生成结果的随机性，相同参数和相同Seed通常可获得相近的生成结果）\", \"prompt\": \"视频生成提示词（必填，建议描述主体、动作、场景、镜头等）\", \"duration\": \"视频时长（选填，整数，1-15 秒，默认5秒）\", \"resolution\": \"输出分辨率（选填，可选值：480p竖、480p横、768p竖、768p横、480p(1:1)、768p(1:1)，默认值768p竖）\", \"ref_image_0\": \"图片 URL（必填，支持 JPG/PNG/WebP）\", \"ref_image_1\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_2\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_3\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_4\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_5\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_6\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_7\": \"图片 URL（选填，支持 JPG/PNG/WebP）\", \"ref_image_8\": \"图片 URL（选填，支持 JPG/PNG/WebP）\"}",
-    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"158a0bba46b6a42f9b175ecdeaea2ac4\"}, \"request_id\": \"0782accb6b05116890256ffaa01cb283\"}"
+    "output_example": "{\"msg\": \"\", \"code\": \"Success\", \"data\": {\"status\": \"completed\", \"results\": [{\"url\": \"https://\", \"type\": \"video\", \"file_type\": \"mp4\", \"output_type\": \"output\"}], \"task_id\": \"671ce5ca-80b3-4a18-8b5c-af6013f0f03d\", \"client_id\": \"example-id\"}, \"request_id\": \"example-id\"}"
   }
 }

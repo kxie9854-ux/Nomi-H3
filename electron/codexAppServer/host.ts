@@ -402,6 +402,8 @@ export class CodexAppServerHost {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...this.extraEnv },
     });
+    // Child error/exit owns the real failure; absorb the asynchronous EPIPE echo from stdin.
+    this.child.stdin?.on("error", () => {});
     const parse = createNdjsonParser((message) => this.onIncoming(message));
     this.child.stdout?.on("data", parse);
     this.child.stderr?.on("data", (chunk: Buffer) => {

@@ -7,6 +7,7 @@ import type { DirectorHistory } from "./directorHistory";
 const ipcSource = fs.readFileSync(path.join(process.cwd(), "electron/codexAppServer/ipc.ts"), "utf8");
 const preloadSource = fs.readFileSync(path.join(process.cwd(), "electron/preload.ts"), "utf8");
 const bridgeSource = fs.readFileSync(path.join(process.cwd(), "src/desktop/bridge.ts"), "utf8");
+const codexBridgeSource = fs.readFileSync(path.join(process.cwd(), "src/desktop/codexBridge.ts"), "utf8");
 const hostSource = fs.readFileSync(path.join(process.cwd(), "electron/codexAppServer/host.ts"), "utf8");
 
 const historyShape: DirectorHistory = {
@@ -20,7 +21,8 @@ describe("director history IPC contract", () => {
   it("exposes readHistory(projectId) on ipc, preload, and the desktop bridge", () => {
     expect(ipcSource).toContain('ipcMain.handle("nomi:codex:read-history"');
     expect(preloadSource).toMatch(/readHistory:\s*\(projectId:\s*string\)\s*=>\s*ipcRenderer\.invoke\("nomi:codex:read-history",\s*projectId\)/);
-    expect(bridgeSource).toContain("readHistory: (projectId: string) => Promise<DirectorHistory>");
+    expect(bridgeSource).toContain("codex?: CodexDesktopBridge");
+    expect(codexBridgeSource).toContain("readHistory: (projectId: string) => Promise<DirectorHistory>");
 
     const history: NonNullable<DesktopBridge["codex"]>["readHistory"] extends (
       projectId: string,
@@ -44,5 +46,12 @@ describe("director history IPC contract", () => {
     expect(readMethod).not.toContain("pendingElicitations");
     expect(readMethod).not.toContain("activeTurn");
     expect(ipcSource).not.toMatch(/nomi:codex:read-history[\s\S]{0,400}respondElicitation/);
+  });
+
+  it("authenticates every Codex renderer-to-main IPC handler", () => {
+    const registrations = ipcSource.match(/ipcMain\.handle\("nomi:codex:/g) ?? [];
+    const senderGuards = ipcSource.match(/assertTrustedSender\(event\)/g) ?? [];
+    expect(registrations).toHaveLength(9);
+    expect(senderGuards).toHaveLength(registrations.length);
   });
 });

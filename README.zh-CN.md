@@ -17,7 +17,7 @@ Nomi 是一个开源的 AI 视频创作桌面工作台。接任何 OpenAI 兼容
 ### 加入 Nomi 用户群
 
 <p align="center">
-  <a href="docs/media/nomi-canvas-group-wechat-2026-08-17.jpg"><img src="docs/media/nomi-canvas-group-wechat-2026-08-17.jpg" alt="Nomi 用户群微信二维码" width="220" /></a>
+  <a href="docs/media/nomi-canvas-group-wechat-2026-08-25.jpg"><img src="docs/media/nomi-canvas-group-wechat-2026-08-25.jpg" alt="Nomi 用户群微信二维码" width="220" /></a>
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@ Nomi 是一个开源的 AI 视频创作桌面工作台。接任何 OpenAI 兼容
   群码失效，或沟通定制开发、系统集成、贴牌交付与持续迭代，请添加作者微信 <strong>TZ857886159</strong>。
 </p>
 
-[参与 GitHub 讨论](https://github.com/aqm857886159/Nomi/discussions) · [提交商务咨询](https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml)
+[参与 GitHub Discussions](https://github.com/aqm857886159/Nomi/discussions) · [提交商务咨询](https://github.com/aqm857886159/Nomi/issues/new?template=business_inquiry.yml)
 
 [![最新版本](https://img.shields.io/github/v/release/aqm857886159/Nomi?label=release)](https://github.com/aqm857886159/Nomi/releases/latest)
 ![平台](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-1a1816)
@@ -107,7 +107,7 @@ Windows 安装包未使用 Authenticode 签名。SmartScreen 弹窗选择“更�
 
 欢迎加入“nomi 画布群”，反馈会直接进入产品迭代。
 
-群二维码已放在 README 首屏；也可以[打开群二维码原图](docs/media/nomi-canvas-group-wechat-2026-08-17.jpg)。二维码不可用时，添加作者微信 **TZ857886159** 拉你进群。
+群二维码已放在 README 首屏；也可以[打开群二维码原图](docs/media/nomi-canvas-group-wechat-2026-08-25.jpg)。二维码不可用时，添加作者微信 **TZ857886159** 拉你进群。
 
 ## 开发者
 
