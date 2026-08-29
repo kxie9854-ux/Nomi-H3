@@ -141,8 +141,20 @@ export function assertLocalAssetMediaBytes(asset: LocalAsset, mediaKind = mediaK
   if (mediaKind !== "image") return;
   const declared = asset.contentType.toLowerCase().split(";")[0].trim();
   const sniffed = contentTypeFromMagicBytes(asset.bytes);
-  if (sniffed && !sniffed.startsWith("image/")) {
-    throw new Error(`图片素材「${asset.fileName}」的真实文件头是 ${sniffed}，不能作为图片上传。`);
+  const knownRasterTypes = new Set([
+    "image/png", "image/jpeg", "image/webp", "image/gif", "image/avif",
+    "image/bmp", "image/x-icon", "image/tiff", "image/heic",
+  ]);
+  if (sniffed) {
+    if (!sniffed.startsWith("image/")) {
+      throw new Error(`图片素材「${asset.fileName}」的真实文件头是 ${sniffed}，不能作为图片上传。`);
+    }
+    if ((knownRasterTypes.has(declared) || declared === "image/svg+xml") && sniffed !== declared) {
+      throw new Error(`图片素材「${asset.fileName}」声明为 ${declared}，但文件头识别为 ${sniffed}。请重新导入原图。`);
+    }
+    // 已由二进制魔数确认的栅格容器可能在 EXIF/C2PA 等元数据中合法内嵌 XML/SVG 文本；
+    // 不能再把任意二进制前缀转成 UTF-8 搜标签，否则真实 PNG/JPEG 会被误判成文本页面。
+    return;
   }
   if (declared === "image/svg+xml") {
     const svg = asset.bytes.toString("utf8").trim();
@@ -162,10 +174,6 @@ export function assertLocalAssetMediaBytes(asset: LocalAsset, mediaKind = mediaK
   if (/<!doctype\s+html|<html\b|<\?xml\b|<svg\b/i.test(prefix)) {
     throw new Error(`图片素材「${asset.fileName}」的内容实际是 HTML/XML/SVG 文本，不是可用于视频生成的栅格图片。请重新导入原图。`);
   }
-  const knownRasterTypes = new Set([
-    "image/png", "image/jpeg", "image/webp", "image/gif", "image/avif",
-    "image/bmp", "image/x-icon", "image/tiff", "image/heic",
-  ]);
   if (knownRasterTypes.has(declared) && sniffed !== declared) {
     throw new Error(`图片素材「${asset.fileName}」声明为 ${declared}，但文件头识别为 ${sniffed || "未知/损坏"}。请重新导入原图。`);
   }

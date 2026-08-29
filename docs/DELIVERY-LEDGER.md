@@ -9,12 +9,13 @@
 
 ---
 
-## 现役欠账（3）
+## 现役欠账（4）
 
 | 状态 | 文档 | 标题 |
 |---|---|---|
 | 📋 方案待拍板 | [2026-08-13-video-deconstruction-storyboard-table.md](plan/2026-08-13-video-deconstruction-storyboard-table.md) | 视频拆解 → 分镜表 → 复刻生成（方案已拍板，待实施） |
 | 🚧 进行中 | [2026-08-28-editing-engine-uplift.md](plan/2026-08-28-editing-engine-uplift.md) | Nomi Editing Engine Uplift |
+| 🚧 进行中 | [2026-08-29-raster-metadata-markup-false-positive.md](plan/2026-08-29-raster-metadata-markup-false-positive.md) | 栅格图片元数据误判为标记文本修复 |
 | 🚧 进行中 | [2026-08-27-release-media-pack-skill.md](superpowers/plans/2026-08-27-release-media-pack-skill.md) | Nomi Release Media Pack Skill Implementation Plan |
 
 ## 远期 / 暂缓（0）
@@ -40,7 +41,7 @@ _没有标记为远期的方案。_
 
 </details>
 
-- 合计扫描：442 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
+- 合计扫描：443 篇方案文档（docs/plan/ 与 docs/superpowers/plans/，不含 INDEX.md）
 
 ---
 
