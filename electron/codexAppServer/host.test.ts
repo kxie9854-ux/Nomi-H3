@@ -180,6 +180,63 @@ describe("Codex MCP elicitation capability", () => {
     expect(writes).toContainEqual(expect.objectContaining({ id: 41, result: { action: "accept", content: { confirm: true } } }));
     expect(host.respondElicitation("41", true)).toBe(false);
   });
+
+  it("declines a pending spend elicitation when another project starts a turn", async () => {
+    const { rpc } = fakeHostRpc();
+    const host = await readyHost(tempSettingsRoot(), rpc);
+    await host.send("idea a", "/skill.md", "project-a");
+    const writes: unknown[] = [];
+    const internals = host as unknown as {
+      write: (value: unknown) => void;
+      handleServerRequest: (message: unknown) => void;
+      pendingElicitations: Map<string, unknown>;
+    };
+    internals.write = (value) => writes.push(value);
+    internals.handleServerRequest({
+      id: 77,
+      method: "mcpServer/elicitation/request",
+      params: {
+        serverName: "nomi",
+        message: "确认消耗模型额度吗？",
+        requestedSchema: { properties: { confirm: { type: "boolean" } }, required: ["confirm"] },
+      },
+    });
+    expect(internals.pendingElicitations.size).toBe(1);
+    await host.send("idea b", "/skill.md", "project-b");
+    expect(writes).toContainEqual(expect.objectContaining({ id: 77, result: { action: "decline" } }));
+    expect(internals.pendingElicitations.size).toBe(0);
+  });
+
+  it("declines shell, file, and network approvals", () => {
+    const host = new CodexAppServerHost();
+    const writes: unknown[] = [];
+    const internals = host as unknown as {
+      write: (value: unknown) => void;
+      handleServerRequest: (message: unknown) => void;
+    };
+    internals.write = (value) => writes.push(value);
+    internals.handleServerRequest({
+      id: 1,
+      method: "item/commandExecution/requestApproval",
+      params: { command: "rm -rf /" },
+    });
+    internals.handleServerRequest({
+      id: 2,
+      method: "item/fileChange/requestApproval",
+      params: {},
+    });
+    internals.handleServerRequest({
+      id: 3,
+      method: "item/permissions/requestApproval",
+      params: {},
+    });
+    expect(writes).toContainEqual(expect.objectContaining({ id: 1, result: { decision: "decline" } }));
+    expect(writes).toContainEqual(expect.objectContaining({ id: 2, result: { decision: "decline" } }));
+    expect(writes).toContainEqual(expect.objectContaining({
+      id: 3,
+      result: { permissions: { network: { enabled: false } }, scope: "session" },
+    }));
+  });
 });
 
 describe("nomiElicitationAccept", () => {

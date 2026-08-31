@@ -284,8 +284,28 @@ describe('capabilityCore/core (磁盘网关：直写 project.json)', () => {
     expect(captured[0].kind).toBe('image_edit')
     expect(captured[0].referenceImages).toEqual(['nomi-local://asset/p/linxia-look.png'])
     expect(out.status).toBe('succeeded')
-    // 已冻结 → 不再弹「还没冻结定妆」提醒（提醒不拦，但冻结后应消失）。
-    expect((out.advisories || []).join('\n')).not.toContain('还没冻结定妆')
+    expect((out.advisories || []).join('\n')).not.toContain('还没定妆')
+  })
+
+  it('未冻结的定妆卡引用在扣费前拒绝', async () => {
+    const project = createNamedProject('未冻结定妆拒发生成')
+    const gateway = createDiskGateway(project.id)
+    const { ids } = await addProjectNodes(gateway, [
+      { kind: 'character', title: '林夏 · 定妆', prompt: '齐肩黑发' },
+      { kind: 'image', title: 'S01 首帧', prompt: '林夏倚护栏' },
+    ])
+    const [characterId, stillId] = ids!
+    await generateOnProject(
+      { projectId: project.id, nodeId: characterId, intent: 'image', prompt: '定妆照', vendor: 'codex-local', modelKey: 'codex-imagegen' },
+      gateway,
+      async () => ({ id: 't-look', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://asset/p/linxia-look.png' }] }),
+    )
+    await connectProjectNodes(gateway, [{ source: characterId, target: stillId, mode: 'character_ref' }])
+    await expect(generateOnProject(
+      { projectId: project.id, nodeId: stillId, intent: 'image', vendor: 'codex-local', modelKey: 'codex-imagegen' },
+      gateway,
+      async () => ({ id: 't-still', status: 'succeeded', assets: [{ type: 'image', url: 'nomi-local://asset/p/s01-first.png' }] }),
+    )).rejects.toThrow(/还没定妆/)
   })
 
   // W1d：kind 按目录 derive——catalog 里模型声明了参考模式时，带参考生成用它选 kind（不硬编码 defaultKind）。

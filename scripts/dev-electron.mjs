@@ -476,6 +476,7 @@ const app = startElectron({
     NOMI_RENDERER_URL: electronRendererUrl,
     ...loadOnboardingAgentEnv(),
     NOMI_LAUNCHER_PID: String(process.pid),
+    NOMI_MCP_FORCE_DEV_LAUNCHER: "1",
   }),
 });
 

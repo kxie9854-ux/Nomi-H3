@@ -2,12 +2,21 @@
 
 日期：2026-08-25  
 仓库：`/Users/kaijun/Documents/ChatGPT/Nomi-H3`  
-基线：Nomi `v0.20.1` 的个人 AGPL fork。上游 remote 叫 `upstream`。  
+基线：Nomi v0.21（`4cac784e`）上的个人 AGPL fork。不跟踪 `origin/main`。  
 详细产品事实也写在 `FORK.md`。本文是当前状态 + 怎么跑 + 下一步，不是上游 Nomi 的通用纪律。
 
 **先读这份再改代码。** 不要读 `AGENTS.md` 里的「主仓库 `/Users/aoqimin/Desktop/Nomi`」或每日论文雷达——那是上游工作流，会把这次开发带跑。导演侧栏里的 Codex 也必须忽略 `AGENTS.md` / `CLAUDE.md` / `docs/research`。
 
 ## 0. 2026-08-24 最新完成
+
+### 2026-08-31 增量
+
+- MCP 开发启动器不再绑 `/Applications/Nomi.app`；`pnpm dev` 强制 `NOMI_MCP_FORCE_DEV_LAUNCHER=1`。
+- H3 resolution 只接受四个中文枚举（可从 480p/768p + 画幅合成）；默认 `480p竖`；GUI/MCP 共用槽位解析 workflow。
+- 切项目会 decline 进行中的 spend elicitation；renderer 桥接票最多 1 张并随 turn 过期。
+- Codex 只自动批 Nomi MCP 工具；shell/改文件/网络拒绝；app-server 环境白名单。
+- 镜头静帧/视频引用未冻结定妆卡时扣费前拒绝；MCP freeze 记 `by:'mcp'`。
+- MCP/画布付费生成锁死视频 autodl-art-h3、静帧 codex-imagegen。
 
 ### 2026-08-29 增量
 
@@ -24,7 +33,7 @@
 
 - **Codex 文本大脑**：catalog 种出 `codex-chat`（kind=text、无 mapping、authType=none），`vendorLanguageModel` 对它走 `electron/ai/codexChatLanguageModel.ts`——`codex exec --json --ephemeral` 封装成 AI SDK LanguageModelV1，tool schema 用 `<<<NOMI_TOOL` 围栏进 prompt、回包解析成 tool-call；不开 `--enable image_generation`。助手下拉出现「Codex 对话（登录额度）」，接入卡文案改「对话 + 出图」。隔离真机走查 `tests/ux/codex-chat-brain.walk.mjs` 9/9 过（含 catalog 落盘断言），截图 `tests/ux/shots/codex-chat-card.png` / `codex-chat-picker.png`。
 - **导演 Skill 点选**：侧栏 `DirectorSkillPicker` 芯片，三档「无技能 / 成片 / 创建技能」，成片脊柱 + 最多 3 个 overlay（古装/运镜/表演/声音/动作/美术/场面/一致性/转场/风格共 10 个），可导入本机 `SKILL.md`（≤256KB，落 `userData/codex-director/imported-skills/`）；`turn/start` 把脊柱+overlay 作为 skill 输入（host.test 已钉 overlay 附在脊柱后）。IPC `nomi:codex:list-skills` / `import-skill`；author 模式配套 `skills/director-skill-author/`。走查 `tests/ux/director-skill-picker.walk.mjs` 全过（三档切换/古装点选/listSkills 11 条/导入自动选中）。
-- **多镜身份锁**：MCP `nomi_freeze_nodes`（只冻已出图的角色/场景/道具卡，幂等）；skill STEP 6 lock-look 关口——定妆图出图→用户锁定→freeze→`character_ref`/`composition_ref` 连各镜首尾静帧→静帧生成自动吃到定妆图走 Codex `image_edit`，冻结前不出镜头静帧；core 对未冻结引用只提醒不拦（`advisories`）。机制链已由 `core.test.ts` 集成测试钉死（出图落卡→冻结→连边→不传 references 的静帧生成走 image_edit 且 referenceImages=定妆图）。真机多镜会话（导演真实跑 lock-look 全流程）待下个项目实测。
+- **多镜身份锁**：MCP `nomi_freeze_nodes`（只冻已出图的角色/场景/道具卡，幂等，MCP 记 `by:'mcp'`）；skill STEP 6 lock-look 关口——定妆图出图→用户锁定→freeze→`character_ref`/`composition_ref` 连各镜首尾静帧→静帧生成自动吃到定妆图走 Codex `image_edit`。引用未冻结定妆卡的镜头静帧/视频在扣费前拒绝。机制链已由 `core.test.ts` 集成测试钉死。
 - **首配引导**：`directorBackendReady` 从 catalog 派生静帧/视频后端可用性，缺任一显示 `DirectorSetupBanner`「去配置模型」（既有 `nomi-open-model-catalog` 通道，不另造登录）；不拦发送。隔离空项目走查截图里可见该条（`director-skill-picker.png`）。
 - 全门重跑通过并盖 `.claude/.gates-ok`（filesize / tokens / i18n / lint 98 / 双 TS / 全量 Vitest / production build）；两个走查脚本本日复跑 exit 0。
 
@@ -153,7 +162,7 @@ H3 实际有的模式：
 | 参考图+音频 | ref2va | `references` + `audio_references`（≤3，各 2–15s） |
 | 参考视频文件 | **没有** | 直接说没有槽 |
 
-付费生成仍走 Nomi spend gate。内嵌 Codex 路径上 elicitation 目前会自动 `{ action: "accept", content: { confirm: true } }`（见 `nomiElicitationAccept`）。这是为了不卡死，**不是** 产品上的最终付费 UX。
+付费生成仍走 Nomi spend gate。运输层/MCP 工具审批自动过；Nomi spend/action elicitation 等侧栏真人点确认，`nomiElicitationAccept` 只在人点之后填 schema。不要再把自动 `{ confirm: true }` 加回去。
 
 ---
 

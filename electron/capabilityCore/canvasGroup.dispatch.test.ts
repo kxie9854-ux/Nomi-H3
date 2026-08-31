@@ -34,7 +34,7 @@ describe('canvas.freezeNodes dispatch', () => {
     }, harness.ctx) as { frozen: string[]; skipped: unknown[] }
     expect(result.frozen).toEqual(built.ids)
     expect(result.skipped).toEqual([])
-    expect(harness.read().nodes[0].meta?.frozen).toMatchObject({ by: 'user' })
+    expect(harness.read().nodes[0].meta?.frozen).toMatchObject({ by: 'mcp' })
   })
 
   it('rejects an empty id list before touching the gateway', async () => {

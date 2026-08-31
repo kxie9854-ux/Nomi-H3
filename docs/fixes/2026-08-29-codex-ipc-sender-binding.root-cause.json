@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "2026-08-29-codex-ipc-sender-binding",
   "problem_type": "untrusted renderer access to Codex IPC",
   "symptom": "The embedded Codex IPC handlers accepted requests from any Electron webContents, including calls that could start login, send director prompts, import skills, or approve a spend elicitation.",
@@ -24,6 +24,21 @@
   "regression_tests": [
     "electron/codexAppServer/directorHistoryIpc.test.ts"
   ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every new ipcMain.handle on the Codex surface can skip the sender guard unless the registration itself calls assertTrustedSender.",
+    "same_class_scan": [
+      "Searched every nomi:codex:* ipcMain.handle in electron/codexAppServer/ipc.ts.",
+      "Compared against electron/ipcSenderGuard.ts and the repository IPC sender-binding ratchet."
+    ]
+  },
+  "prevention": {
+    "strategy": "Every nomi:codex:* handler calls assertTrustedSender before reading arguments or causing effects.",
+    "artifacts": [
+      "electron/codexAppServer/ipc.ts",
+      "electron/codexAppServer/directorHistoryIpc.test.ts"
+    ]
+  },
   "migration": "No persisted data migration. Trusted Nomi renderer calls retain the same channel names and payloads; untrusted senders now fail closed.",
   "residual_risks": [
     "The ten legacy unguarded IPC registrations outside this module remain tracked by the existing ratchet baseline and are not expanded by this change."

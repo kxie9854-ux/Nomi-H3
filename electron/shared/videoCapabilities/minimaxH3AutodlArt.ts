@@ -12,7 +12,7 @@ const RESOLUTION: ModelParameterControl = {
   label: "清晰度",
   type: "select",
   options: opt(["480p竖", "768p竖", "480p横", "768p横"]),
-  defaultValue: "768p竖",
+  defaultValue: "480p竖",
 };
 
 const DURATION: ModelParameterControl = {
@@ -85,7 +85,6 @@ export const MINIMAX_H3_AUTODL_ART_ARCHETYPE: ModelArchetype = {
         { kind: "audio_ref", label: "参考音频", min: 0, max: 3, inputKey: "reference_audio_urls" },
       ],
       params: [RESOLUTION, DURATION],
-      fixedParams: { workflow_id: "minimax_h3_image_audio_to_video_v2_15s" },
     },
   ],
 };

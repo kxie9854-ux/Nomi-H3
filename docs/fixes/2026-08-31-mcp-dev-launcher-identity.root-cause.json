@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "id": "2026-08-31-mcp-dev-launcher-identity",
+  "problem_type": "mcp_launcher_binds_sibling_installed_app",
+  "symptom": "Embedded Codex MCP in this fork can talk to /Applications/Nomi.app instead of the running Nomi-H3 Electron, so freeze/assemble/export never hit the open canvas.",
+  "direct_cause": "Dev launcherEntry() reused a packaged Nomi.app Helper whenever that binary existed, and Codex config refresh rewrote mcp_servers.nomi to that path on startup.",
+  "class_root": "MCP launcher identity was derived from a sibling install path instead of the currently running Electron process.",
+  "affected_population": [
+    "Developers who also have official Nomi installed at /Applications/Nomi.app",
+    "Embedded Codex director and any Claude/Cursor one-click MCP install from a unpackaged fork"
+  ],
+  "scope_paths": [
+    "electron/capabilityCore/mcpConfig.ts",
+    "scripts/dev-electron.mjs"
+  ],
+  "entry_points": [
+    "launcherEntry() / mcpServerEntry() for Claude, Codex, and Cursor",
+    "refreshCodexNomiLauncher() on embedded director startup",
+    "pnpm dev Electron spawn env"
+  ],
+  "internal_only_reason": "The launcher is Nomi's own Electron Helper identity. No provider API or third-party MCP protocol change is required to decide that the running process is the only legal target.",
+  "invariants": [
+    "Unpackaged Nomi always emits a development MCP launcher whose NOMI_MCP_APP_COMMAND is process.execPath and whose app path is app.getAppPath().",
+    "Unpackaged Nomi never selects /Applications/Nomi.app as the MCP GUI target.",
+    "pnpm dev sets NOMI_MCP_FORCE_DEV_LAUNCHER=1 so any remaining packaged-preference branch stays fail-closed."
+  ],
+  "regression_tests": [
+    "electron/capabilityCore/mcpConfig.test.ts"
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any unpackaged Electron that shares the Nomi.app product name can bind Codex/Claude/Cursor to the official install instead of the running fork.",
+    "same_class_scan": [
+      "Searched installedMacLauncher, /Applications/Nomi.app, NOMI_MCP_FORCE_DEV_LAUNCHER, and mcpServerEntry call sites in electron/capabilityCore and electron/codexAppServer.",
+      "Confirmed Claude JSON, Cursor JSON, and Codex TOML all share launcherEntry(); packaged isPackaged path still uses process.execPath.",
+      "Confirmed ipc.ts refreshCodexNomiLauncher() rewrites ~/.codex/config.toml from mcpServerEntry() on every director start."
+    ]
+  },
+  "prevention": {
+    "strategy": "Delete the sibling-install preference. Unpackaged launchers bind the running Electron identity only, and pnpm dev forces the development launcher.",
+    "artifacts": [
+      "electron/capabilityCore/mcpConfig.ts",
+      "scripts/dev-electron.mjs",
+      "electron/capabilityCore/mcpConfig.test.ts"
+    ]
+  },
+  "migration": "No persisted project migration. The next director start or MCP install rewrites mcp_servers.nomi to the running Electron. A leftover ~/.codex config pointing at /Applications/Nomi.app is classified launcher-stale and auto-migrates when the launcher kind is packaged; unpackaged sessions rewrite on refreshCodexNomiLauncher().",
+  "residual_risks": [
+    "A user who manually edits mcp_servers.nomi to a custom proxy remains in configState=custom and is not overwritten.",
+    "Packaged Nomi-H3 still uses process.execPath; if that binary is itself named Nomi.app it is the running product, not a sibling."
+  ]
+}

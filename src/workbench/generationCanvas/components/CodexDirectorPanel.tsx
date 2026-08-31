@@ -178,6 +178,7 @@ export default function CodexDirectorPanel({
   const [codexModel, setCodexModel] = React.useState(() => readDirectorCodexModel())
   const [codexEffort, setCodexEffort] = React.useState(() => readDirectorCodexEffort())
   const assistantId = React.useRef<string | null>(null)
+  const elicitationRef = React.useRef<PendingElicitation | null>(null)
   const overflowRef = React.useRef<HTMLDivElement>(null)
   const [projectId, setProjectId] = React.useState(() => (
     getActiveWorkbenchProjectId() || getDesktopActiveProjectId() || ''
@@ -228,6 +229,13 @@ export default function CodexDirectorPanel({
   React.useEffect(() => {
     projectIdRef.current = projectId
     const desktop = getDesktopBridge()
+    const leaving = elicitationRef.current
+    if (leaving) {
+      elicitationRef.current = null
+      if (leaving.approvalScope) useSpendConfirmStore.getState().expirePreApprovedAgentSpend(leaving.approvalScope)
+      else useSpendConfirmStore.getState().expirePreApprovedAgentSpend()
+      void desktop?.codex?.respondElicitation(leaving.requestId, false)
+    }
     const generation = historyGenerationRef.current + 1
     historyGenerationRef.current = generation
     setLines([])
@@ -311,17 +319,20 @@ export default function CodexDirectorPanel({
         return
       }
       if (event.kind === 'elicitation') {
-        setElicitation({
+        const next = {
           requestId: event.requestId,
           message: event.message,
           purpose: event.purpose,
           ...(event.approvalScope ? { approvalScope: event.approvalScope } : {}),
           ...(event.approvalPasses ? { approvalPasses: event.approvalPasses } : {}),
-        })
+        }
+        elicitationRef.current = next
+        setElicitation(next)
         setRespondingToElicitation(false)
         return
       }
       if (event.kind === 'turn-complete') {
+        useSpendConfirmStore.getState().expirePreApprovedAgentSpend()
         setBusy(false)
         setActivity('')
         assistantId.current = null
@@ -387,13 +398,13 @@ export default function CodexDirectorPanel({
     // 真人在这里点过后，给同项目同模型服务的 renderer 兜底门同样的明示次数上限；正常过线时它不会被消费，
     // 仍只意味着用户已明确授权过该 scope，不会放行 H3 等其它模型服务。
     if (confirmed && elicitation.purpose === 'spend' && elicitation.approvalScope) {
-      useSpendConfirmStore.getState().preApproveNextAgentSpend(
-        elicitation.approvalScope,
-        elicitation.approvalPasses,
-      )
+      useSpendConfirmStore.getState().preApproveNextAgentSpend(elicitation.approvalScope, 1)
+    } else if (!confirmed) {
+      useSpendConfirmStore.getState().expirePreApprovedAgentSpend(elicitation.approvalScope)
     }
     void desktop.codex.respondElicitation(elicitation.requestId, confirmed).then(({ ok }) => {
       if (!ok) throw new Error(t('generationCommon.codex.confirmationExpired'))
+      elicitationRef.current = null
       setElicitation(null)
     }).catch((err: unknown) => {
       setError(err instanceof Error ? err.message : String(err))

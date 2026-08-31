@@ -451,8 +451,12 @@ export const MCP_TOOL_CATALOG = [
         nodeId: { type: 'string', description: '在既有节点上生成（可选）' },
         references: { type: 'array', items: { type: 'string' }, description: '参考图 URL（可选）' },
         // 画幅/时长（可选，caller-wins 合并进真实请求体）——修「写进 prompt 无效、静默出方图」的根因。
-        aspect_ratio: { type: 'string', description: '画面比例，如 "16:9" / "9:16" / "1:1"（可选；覆盖模型默认）。' },
-        resolution: { type: 'string', description: '清晰度，如 "1080p" / "2K" / "720p"（可选；取值随模型而定）。' },
+        aspect_ratio: { type: 'string', description: '画面比例，如 "16:9" / "9:16"（可选；覆盖模型默认）。H3 与 resolution 合成为 480p竖/480p横 等。' },
+        resolution: {
+          type: 'string',
+          enum: ['480p竖', '768p竖', '480p横', '768p横'],
+          description: 'H3 清晰度，仅这四个中文值。也接受 480p/768p，并与 aspect_ratio 合成竖/横。不传默认 480p竖。',
+        },
         duration: { type: 'number', description: '视频时长（秒，可选；仅视频类有效）。' },
         seed: { type: 'number', description: '随机种子（可选）。同 prompt + 同 seed 可复现同一结果——做系列风格一致时用它。' },
         // 首尾帧语义分解（W2）。**必须在 schema 里露出来，模型才知道能填**——这两个字段在能力核里

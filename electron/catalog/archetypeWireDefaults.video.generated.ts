@@ -281,14 +281,13 @@ export const ARCHETYPE_WIRE_DEFAULTS_VIDEO: Record<string, Record<string, Record
     "text_to_video": {
       "*": {
         "workflow_id": "minimax_h3_lightx2v_no_pic",
-        "resolution": "768p竖",
+        "resolution": "480p竖",
         "duration": 5
       }
     },
     "image_to_video": {
       "*": {
-        "workflow_id": "minimax_h3_image_audio_to_video_v2_15s",
-        "resolution": "768p竖",
+        "resolution": "480p竖",
         "duration": 5
       }
     }

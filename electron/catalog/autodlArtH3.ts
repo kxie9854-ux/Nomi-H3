@@ -144,7 +144,7 @@ export const AUTODL_ART_H3_T2V_CREATE_OP: HttpOperation = {
   defaultParams: {
     workflow_id: "minimax_h3_lightx2v_no_pic",
     duration: 5,
-    resolution: "768p竖",
+    resolution: "480p竖",
   },
 };
 
@@ -176,7 +176,7 @@ export const AUTODL_ART_H3_I2V_CREATE_OP: HttpOperation = {
   defaultParams: {
     workflow_id: "minimax_h3_lightx2v",
     duration: 5,
-    resolution: "768p竖",
+    resolution: "480p竖",
   },
 };
 

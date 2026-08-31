@@ -91,12 +91,6 @@ export function packagedMcpLauncherAvailable(appCommand: string): boolean {
   return fs.existsSync(appCommand) && fs.existsSync(launcher.command) && launcher.args.every((arg) => fs.existsSync(arg))
 }
 
-function installedMacLauncher(): string | null {
-  if (process.platform !== 'darwin' || process.env.NODE_ENV === 'test' || process.env.NOMI_MCP_FORCE_DEV_LAUNCHER === '1') return null
-  const candidate = '/Applications/Nomi.app/Contents/MacOS/Nomi'
-  return packagedMcpLauncherAvailable(candidate) ? candidate : null
-}
-
 function nodeLauncherEntry(
   appCommand: string,
   appArgs: string[],
@@ -144,8 +138,9 @@ function developmentAppEnv(): Record<string, string> {
 
 function launcherEntry(): LauncherEntry {
   if (app.isPackaged) return nodeLauncherEntry(process.execPath, [], 'packaged')
-  const installed = installedMacLauncher()
-  if (installed) return nodeLauncherEntry(installed, [], 'packaged')
+  // Never bind MCP to a sibling /Applications/Nomi.app. This fork's director tools
+  // only exist on the running Electron; a packaged official install would silently
+  // receive freeze/assemble/export.
   return nodeLauncherEntry(process.execPath, [app.getAppPath()], 'development', developmentAppEnv())
 }
 

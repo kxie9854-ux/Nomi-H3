@@ -1,0 +1,69 @@
+{
+  "schema_version": 2,
+  "id": "2026-08-31-codex-sandbox-and-fork-backends",
+  "problem_type": "director_over_trust_and_unlocked_backends",
+  "symptom": "Embedded Codex auto-approved shell, file patches, and session-wide network, inherited the full Electron secret environment, and could spend on Dreamina/Kie/Seedance even though the fork contract is AutoDL H3 + Codex imagegen. Identity lock was advisory, so unfrozen faces still generated.",
+  "direct_cause": "handleServerRequest accepted every Codex approval method; spawn spread process.env; generateOnProject only appended unfrozen advisories after spend; freezeNodes always stamped by:'user'; seeds and pickers still exposed upstream video/image models.",
+  "class_root": "Director privileges and paid generate backends were not constrained at the host approval boundary and the generate dispatch boundary; identity freeze was a result annotation instead of a pre-spend gate.",
+  "affected_population": [
+    "Anyone using the embedded Codex director",
+    "MCP clients calling nomi_generate / nomi_freeze_nodes",
+    "Canvas users generating video or stills on this fork"
+  ],
+  "scope_paths": [
+    "electron/codexAppServer/host.ts",
+    "electron/codexAppServer/codexEnv.ts",
+    "electron/catalog/forkGenerateContract.ts",
+    "electron/capabilityCore/dispatcher.ts",
+    "electron/capabilityCore/core.ts",
+    "electron/capabilityCore/canvasGraph.ts"
+  ],
+  "entry_points": [
+    "Codex item/commandExecution/requestApproval, execCommandApproval, item/fileChange/requestApproval, applyPatchApproval, item/permissions/requestApproval",
+    "Codex app-server spawn env",
+    "dispatcher generate",
+    "generateOnProject before confirmSpend",
+    "canvas.freezeNodes"
+  ],
+  "internal_only_reason": "Approvals, env inheritance, freeze stamps, and generate vendor policy are Nomi host/catalog invariants. No vendor API is changed.",
+  "invariants": [
+    "Only isCodexNomiToolApproval auto-accepts; shell, file, patch, and network approvals decline.",
+    "Codex app-server env is an allowlist plus extraEnv (projects/settings roots), not the Electron process environment.",
+    "Paid video generate from MCP dispatch must be autodl-art / autodl-art-h3; paid image generate from MCP must be codex-local / codex-imagegen.",
+    "Shot stills/videos that reference unfrozen character/scene/prop cards fail before spend; generating the look card itself is allowed.",
+    "MCP freezeNodes records by:'mcp'; other freeze callers record by:'user'."
+  ],
+  "regression_tests": [
+    "electron/codexAppServer/host.test.ts",
+    "electron/catalog/forkGenerateContract.test.ts",
+    "electron/capabilityCore/core.test.ts",
+    "electron/capabilityCore/canvasGraph.test.ts",
+    "electron/capabilityCore/canvasGroup.dispatch.test.ts"
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every director turn hits the same approval handler and spawn env; every MCP/canvas paid generate hits dispatcher or runCatalogGenerationTask; every freeze hits freezeNodes.",
+    "same_class_scan": [
+      "Searched handleServerRequest approval methods, spawn env, process.env spread, freezeNodes by:'user', unfrozenAnchorsForShot advisories, and seedBuiltins vendor list.",
+      "generateOnProject is also used by unit tests of generic two-hop with apimart; the product lock is enforced at dispatcher + canvas catalog task, not inside the generic engine.",
+      "Builtin seeds remain in catalog for mergeability; generate-time refusal is the spend gate."
+    ]
+  },
+  "prevention": {
+    "strategy": "Fail-closed Codex approvals and allowlisted env; fork generate contract at MCP dispatch and canvas task start; unfrozen refs throw before spend; freeze attribution records the caller.",
+    "artifacts": [
+      "electron/codexAppServer/host.ts",
+      "electron/codexAppServer/codexEnv.ts",
+      "electron/catalog/forkGenerateContract.ts",
+      "electron/capabilityCore/dispatcher.ts",
+      "electron/capabilityCore/core.ts",
+      "electron/capabilityCore/canvasGraph.ts"
+    ]
+  },
+  "migration": "No persisted schema bump. Existing unfrozen cards must be frozen before the next referenced still/video. Existing catalog rows for other vendors remain on disk but paid generate from director/canvas refuses them. Old freeze records with by:'user' stay as-is.",
+  "residual_risks": [
+    "Direct generateOnProject / runTask / canvas catalog-task callers used by tests and the generic runner can still name other vendors; MCP nomi_generate is product-locked.",
+    "Text/audio intents are not locked; assistant text may still use catalog text models.",
+    "Codex may require an inherited env var not on the allowlist for a future ChatGPT.app login path; that would surface as a login failure rather than a secret leak."
+  ]
+}

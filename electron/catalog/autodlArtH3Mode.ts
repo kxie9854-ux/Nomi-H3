@@ -1,5 +1,5 @@
 // AutoDL.art MiniMax H3 模式 → workflow_id。headless/MCP 没有 UI 模式开关，
-// 按已填槽位派生；调用方显式 workflow_id 优先。
+// 按已填槽位派生；槽位是真相源，caller/archetype pin 不能选矛盾图。
 
 export const AUTODL_ART_H3_WORKFLOWS = {
   t2va: "minimax_h3_lightx2v_no_pic",
@@ -7,6 +7,26 @@ export const AUTODL_ART_H3_WORKFLOWS = {
   ref2va: "minimax_h3_lightx2v_v5_15s",
   ref2va_audio: "minimax_h3_image_audio_to_video_v2_15s",
 } as const;
+
+export const AUTODL_ART_H3_RESOLUTIONS = ["480p竖", "768p竖", "480p横", "768p横"] as const;
+export const AUTODL_ART_H3_DEFAULT_RESOLUTION = "480p竖";
+export const AUTODL_ART_H3_RESOLUTION_REFUSE =
+  "AutoDL.art H3 分辨率只接受 480p竖 / 768p竖 / 480p横 / 768p横。可用 aspect_ratio 9:16 或 16:9 搭配 480p/768p。";
+
+/** Map MCP/GUI aliases onto AutoDL's Chinese enum. "" = omitted. null = reject before spend. */
+export function normalizeAutodlArtH3Resolution(resolution: unknown, aspectRatio?: unknown): string | null {
+  const raw = typeof resolution === "string" ? resolution.trim() : "";
+  if (!raw) return "";
+  if ((AUTODL_ART_H3_RESOLUTIONS as readonly string[]).includes(raw)) return raw;
+  const compact = raw.replace(/\s+/g, "").toLowerCase();
+  const tier = compact === "480p" || compact === "480" ? "480p"
+    : compact === "768p" || compact === "768" ? "768p"
+    : "";
+  if (!tier) return null;
+  const aspect = typeof aspectRatio === "string" ? aspectRatio.trim() : "";
+  if (aspect === "16:9" || aspect === "16/9") return `${tier}横`;
+  return `${tier}竖`;
+}
 
 function trimUrl(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -55,7 +75,10 @@ export function prepareAutodlArtH3Params(params: Record<string, unknown>): Recor
     next.last_frame = last;
     next.lastFrameUrl = last;
   }
-  if (!trimUrl(next.workflow_id)) next.workflow_id = resolveAutodlArtH3WorkflowId(next);
+  next.workflow_id = resolveAutodlArtH3WorkflowId(next);
+  const mapped = normalizeAutodlArtH3Resolution(next.resolution, next.aspect_ratio || next.aspectRatio);
+  if (mapped === null) throw new Error(AUTODL_ART_H3_RESOLUTION_REFUSE);
+  next.resolution = mapped || AUTODL_ART_H3_DEFAULT_RESOLUTION;
   if (!next.anonymousAssetHostingConsent) next.anonymousAssetHostingConsent = "allow";
   if (!trimUrl(next.image)) {
     const images = urlList(next.reference_image_urls);

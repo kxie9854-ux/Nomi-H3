@@ -110,6 +110,17 @@ describe('capabilityCore/mcpConfig', () => {
     expect(after.mcpServers.nomi.args[0]).toBe('/fake/repo/dist-electron/capabilityCore/mcpNodeLauncher.js')
   })
 
+  it('unpackaged launcher never binds /Applications/Nomi.app', () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('NOMI_MCP_FORCE_DEV_LAUNCHER', '')
+    isPackaged = false
+    const entry = mcpServerEntry('codex')
+    expect(entry.env?.[MCP_CONFIG_KIND_ENV]).toBe('development')
+    expect(entry.env?.NOMI_MCP_APP_COMMAND).toBe(process.execPath)
+    expect(entry.command).not.toContain('/Applications/Nomi.app')
+    expect(JSON.parse(entry.env?.NOMI_MCP_APP_ARGS || '[]')).toEqual(['/fake/repo'])
+  })
+
   it('development cold start preserves the running Electron profile, library and renderer identity', () => {
     const entry = mcpServerEntry('codex')
     expect(entry.env).toMatchObject({

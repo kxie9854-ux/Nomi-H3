@@ -1,0 +1,68 @@
+{
+  "schema_version": 2,
+  "id": "2026-08-31-autodl-h3-wire-identity",
+  "problem_type": "provider_wire_params_not_derived_from_vendor_enum",
+  "symptom": "Director-submitted AutoDL.art H3 jobs can send English resolution strings AutoDL rejects, default to the expensive 768p竖 tier, or pin the audio workflow for silent image refs depending on GUI vs MCP.",
+  "direct_cause": "MCP schema documented 1080p/2K/720p; mapping and archetype defaults were 768p竖; GUI ref mode hard-coded minimax_h3_image_audio_to_video_v2_15s while prepareAutodlArtH3Params kept any caller workflow_id.",
+  "class_root": "AutoDL H3 wire identity (resolution enum and workflow_id) was not derived from the vendor's Chinese enum and filled slots at one shared prepare boundary before spend.",
+  "affected_population": [
+    "Users generating MiniMax H3 video through the embedded Codex director",
+    "Users generating H3 from the canvas GUI ref mode",
+    "Any MCP client calling nomi_generate with vendor=autodl-art"
+  ],
+  "scope_paths": [
+    "electron/catalog/**",
+    "electron/shared/videoCapabilities/minimaxH3AutodlArt.ts",
+    "electron/capabilityCore/mcpToolCatalog.ts",
+    "electron/catalog/taskParams.ts",
+    "electron/runtime.ts"
+  ],
+  "entry_points": [
+    "prepareAutodlArtH3Params before AutoDL create",
+    "generateOnProject AutoDL early guard",
+    "applyHeadlessParamDefaults extras for autodl-art-h3",
+    "nomi_generate resolution schema and buildGenerateParams extras"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://www.autodl.art/large-model/comfyui",
+      "checked_at": "2026-08-31",
+      "purpose": "Confirm H3 ComfyUI input_rules expose Chinese resolution enums (480p竖/768p竖/480p横/768p横) rather than 1080p/2K/720p."
+    }
+  ],
+  "invariants": [
+    "AutoDL H3 resolution on the wire is one of 480p竖 / 768p竖 / 480p横 / 768p横, or the request is rejected before spend.",
+    "480p/768p plus aspect_ratio 9:16 or 16:9 is translated at prepare; unknown English values fail closed.",
+    "Omitted resolution defaults to 480p竖 at mapping, archetype, and prepare.",
+    "workflow_id is always resolved from filled slots (first+last → fl2va, audio → audio, images → image ref, else t2va) and a caller or archetype pin cannot select a contradictory graph."
+  ],
+  "regression_tests": [
+    "electron/catalog/autodlArtH3.test.ts",
+    "electron/catalog/autodlArtH3Mode.test.ts"
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every AutoDL H3 submit from GUI, MCP, or headless generate crosses the same extras/workflow/resolution fields.",
+    "same_class_scan": [
+      "Searched resolution_map, 768p竖 defaults, workflow_id pins, resolveAutodlArtH3WorkflowId, and prepareAutodlArtH3Params call sites.",
+      "GUI archetype ref.fixedParams and MCP resolver were both producing workflow_id; runtime applyHeadlessParamDefaults is the other extras owner.",
+      "MCP schema still advertised 1080p/2K/720p independently of catalog/autodl-art-h3.json input_rules."
+    ]
+  },
+  "prevention": {
+    "strategy": "One prepareAutodlArtH3Params owner derives resolution and workflow_id from slots and the Chinese enum; mapping/archetype cheap-default to 480p竖; MCP schema enum matches the vendor; runtime always runs prepare before spend.",
+    "artifacts": [
+      "electron/catalog/autodlArtH3.ts",
+      "electron/catalog/autodlArtH3Mode.ts",
+      "electron/shared/videoCapabilities/minimaxH3AutodlArt.ts",
+      "electron/catalog/taskParams.ts",
+      "electron/capabilityCore/mcpToolCatalog.ts"
+    ]
+  },
+  "migration": "No persisted project schema bump. Existing nodes with English resolution fail on next submit until the director/UI sends a Chinese enum or 480p/768p+aspect. Nodes that omitted resolution now spend 480p竖 instead of 768p竖.",
+  "residual_risks": [
+    "AutoDL.art may add 1080p Chinese enums later; they remain rejected until the fork contract and schema are updated.",
+    "catalog/autodl-art-h3.raw.json still records AutoDL's own 768p竖 API default; product default is the mapping/archetype override."
+  ]
+}

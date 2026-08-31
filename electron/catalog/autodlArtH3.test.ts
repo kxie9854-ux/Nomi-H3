@@ -54,6 +54,11 @@ describe("AutoDL.art H3 seeds", () => {
 });
 
 describe("AutoDL.art H3 传输形状", () => {
+  it("mapping 默认分辨率是便宜档 480p竖", () => {
+    expect(AUTODL_ART_H3_T2V_CREATE_OP.defaultParams).toMatchObject({ duration: 5, resolution: "480p竖" });
+    expect(AUTODL_ART_H3_I2V_CREATE_OP.defaultParams).toMatchObject({ duration: 5, resolution: "480p竖" });
+  });
+
   it("文生视频打 no_pic 工作流，body 只有 prompt/duration/resolution", () => {
     const built = createBody({
       workflow_id: "minimax_h3_lightx2v_no_pic",

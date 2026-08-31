@@ -162,6 +162,8 @@ describe('capabilityCore/canvasGraph', () => {
       '节点不存在',
     ])
     expect(first.snapshot.nodes[0].meta?.frozen).toEqual({ at: 1_700_000_000_000, by: 'user' })
+    const mcp = freezeNodes(built.snapshot, [cat], 1_700_000_000_000, 'mcp')
+    expect(mcp.snapshot.nodes[0].meta?.frozen).toEqual({ at: 1_700_000_000_000, by: 'mcp' })
     const again = freezeNodes(first.snapshot, [cat], 1_800_000_000_000)
     expect(again.frozen).toEqual([cat])
     expect(again.snapshot.nodes[0].meta?.frozen).toEqual({ at: 1_700_000_000_000, by: 'user' })

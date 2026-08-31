@@ -400,7 +400,12 @@ function nodeResultUrl(node: CanvasNode): string {
 }
 
 /** 给已出图的角色/场景/道具卡打冻结标记。幂等。非锚或没图则跳过。 */
-export function freezeNodes(snapshot: CanvasSnapshot, nodeIds: string[], frozenAt = Date.now()): FreezeNodesResult {
+export function freezeNodes(
+  snapshot: CanvasSnapshot,
+  nodeIds: string[],
+  frozenAt = Date.now(),
+  by: 'user' | 'mcp' = 'user',
+): FreezeNodesResult {
   const wanted = Array.from(new Set(nodeIds.map((id) => String(id || '').trim()).filter(Boolean)))
   const next = cloneSnapshot(snapshot)
   const frozen: string[] = []
@@ -429,7 +434,7 @@ export function freezeNodes(snapshot: CanvasSnapshot, nodeIds: string[], frozenA
       meta: {
         ...(node.meta && typeof node.meta === 'object' ? node.meta : {}),
         [ANCHOR_META_KEYS.referenceSheet]: true,
-        [ANCHOR_META_KEYS.frozen]: { at: frozenAt, by: 'user' },
+        [ANCHOR_META_KEYS.frozen]: { at: frozenAt, by },
       },
     }
     frozen.push(nodeId)

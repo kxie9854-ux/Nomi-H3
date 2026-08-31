@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "2026-08-29-h3-fork-integration",
   "problem_type": "fork capabilities bypassing upstream catalog and task invariants",
   "symptom": "Replaying the Nomi-H3 snapshot directly onto Nomi v0.21 would create parallel vendor seeds, incomplete generated archetype projections, and provider-task recovery paths that disagreed with the upstream capability core.",
@@ -50,6 +50,23 @@
     "electron/catalog/paramTranslate.test.ts",
     "electron/tasks/unrecognizedTaskStatusQuery.test.ts"
   ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any later H3 or Codex capability that writes a second vendor seed, mapping, or task recovery path would recreate the parallel-registry seam.",
+    "same_class_scan": [
+      "Searched BUILTIN_VENDOR_SEEDS, applyBuiltinSeeds, generated archetype files, resume_only, and Codex adapters.",
+      "Confirmed AutoDL.art and Codex local go through the v0.21 catalog/task owners rather than a fork-only registry."
+    ]
+  },
+  "prevention": {
+    "strategy": "Project fork H3/Codex capabilities through the current catalog, archetype generation, and task-recovery owners.",
+    "artifacts": [
+      "electron/catalog/autodlArtH3.ts",
+      "electron/catalog/autodlArtH3Mode.ts",
+      "electron/catalog/builtinVendorSeeds.ts",
+      "electron/catalog/seedBuiltins.ts"
+    ]
+  },
   "migration": "No user project schema bump. Existing H3 catalog rows and provider task identifiers are normalized through the v0.21 catalog/task owners; generated archetype projections are rebuilt from source descriptors.",
   "residual_risks": [
     "AutoDL.art provider behavior can still change independently; future endpoint or model changes require a fresh official-document check and trial capture.",

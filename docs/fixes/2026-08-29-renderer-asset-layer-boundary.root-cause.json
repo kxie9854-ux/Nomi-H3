@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "2026-08-29-renderer-asset-layer-boundary",
   "problem_type": "renderer importing main-process asset transport implementation",
   "symptom": "The Vite-backed Electron window showed the main-interface error boundary because the renderer transitively loaded @xmldom/xmldom from the main-process upload implementation.",
@@ -37,6 +37,21 @@
     "tests/ux/codex-chat-brain.walk.mjs",
     "tests/ux/director-skill-picker.walk.mjs"
   ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any renderer import of a main-process transport module can pull Node-only parsers into Vite.",
+    "same_class_scan": [
+      "Searched renderer imports of assetLocalization and @xmldom/xmldom.",
+      "Moved collectLocalAssetUrls to the dependency-free assetValueScheme owner."
+    ]
+  },
+  "prevention": {
+    "strategy": "Keep pure asset-value classification in assetValueScheme; renderer catalog tasks import that module only.",
+    "artifacts": [
+      "electron/catalog/assetValueScheme.ts",
+      "src/workbench/generationCanvas/runner/catalogTaskActions.ts"
+    ]
+  },
   "migration": "No persisted-data migration. Only module ownership changes; asset detection and request payloads are unchanged.",
   "residual_risks": [
     "Other renderer imports of main-process modules remain governed by the existing architecture gates and should be split at their pure boundary when found."

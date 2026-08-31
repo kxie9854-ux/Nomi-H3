@@ -33,14 +33,19 @@ import {
 } from './canvasGraph'
 import type { ProjectGateway } from './gateway'
 import { verifyAndMaybeRetry, type ShotVerifyDeps, type ShotVerifyOutcome } from './shotVerifyOrchestrate'
-import { unfrozenAnchorsForShot } from './anchorBible'
+import { isVisualAnchorKind, unfrozenAnchorsForShot } from './anchorBible'
 import { composeShotPrompt, runFirstHop, shouldRenderLastFrame, shouldUseTwoHop } from './i2vTwoHop'
 import { pickFirstFramePainter } from './firstFramePainter'
 import { previousShotPromptFor } from './shotOrder'
 import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
 import { copyAssetFile } from '../assets/projectAssetStore'
 import { AUTODL_ART_H3_MODEL_SEED, AUTODL_ART_VENDOR_SEED, isAutodlArtLocalFallbackTaskId } from '../catalog/autodlArtH3'
-import { autodlArtH3RejectReason, prepareAutodlArtH3Params } from '../catalog/autodlArtH3Mode'
+import {
+  AUTODL_ART_H3_RESOLUTION_REFUSE,
+  autodlArtH3RejectReason,
+  normalizeAutodlArtH3Resolution,
+  prepareAutodlArtH3Params,
+} from '../catalog/autodlArtH3Mode'
 import { createSpendTrustScope } from './mcpSpendTrust'
 import {
   isTerminalTaskStatus,
@@ -220,11 +225,15 @@ export async function setProjectNodePrompt(gateway: ProjectGateway, nodeId: stri
   return { changed }
 }
 
-export async function freezeProjectNodes(gateway: ProjectGateway, nodeIds: string[]): Promise<{
+export async function freezeProjectNodes(
+  gateway: ProjectGateway,
+  nodeIds: string[],
+  by: 'user' | 'mcp' = 'mcp',
+): Promise<{
   frozen: string[]
   skipped: Array<{ nodeId: string; reason: string }>
 }> {
-  const result = freezeNodes(await gateway.readDoc(), nodeIds)
+  const result = freezeNodes(await gateway.readDoc(), nodeIds, Date.now(), by)
   if (result.frozen.length) await gateway.apply(result.snapshot)
   return { frozen: result.frozen, skipped: result.skipped }
 }
@@ -383,6 +392,11 @@ export async function generateOnProject(
     }
     const rejected = autodlArtH3RejectReason(guardParams, kind)
     if (rejected) throw new Error(rejected)
+    const mapped = normalizeAutodlArtH3Resolution(
+      guardParams.resolution,
+      guardParams.aspect_ratio || paramsRecord.aspectRatio,
+    )
+    if (mapped === null) throw new Error(AUTODL_ART_H3_RESOLUTION_REFUSE)
   }
 
   // 已经拿到 provider taskId 的节点只续查，绝不重新走确认/提交。覆盖 running/recoverable，
@@ -435,6 +449,16 @@ export async function generateOnProject(
   }
   if (input.resumeOnly) {
     throw new Error(`节点 ${nodeId} 没有可续查的供应商任务；为避免重复扣费，本次没有提交新任务。`)
+  }
+
+  if ((intent === 'image' || intent === 'video') && !isVisualAnchorKind(typeof node.kind === 'string' ? node.kind : '')) {
+    const unfrozenBeforeSpend = unfrozenAnchorsForShot(referenceSourceNodes(snapshot, nodeId))
+    if (unfrozenBeforeSpend.length) {
+      throw new Error(
+        `这一镜引用的 ${unfrozenBeforeSpend.length} 张卡还没定妆：${unfrozenBeforeSpend.map((n) => n.title || n.id).join('、')}。`
+        + '先 nomi_freeze_nodes 再生成，避免跨镜换脸。',
+      )
+    }
   }
 
   // 先把节点以「排队中」态写出去——A 模式：节点立即出现在画布（所见即所得）；B 模式：落盘占位。
@@ -735,17 +759,7 @@ export async function generateOnProject(
     }
   }
 
-  // 冻结门第三层（只提醒不拦）：这一镜引用的角色/场景卡里有没有还没定妆冻结的。
-  // 放在**结果里**而不是生成前拦：单镜生成不该被批量语义的门挡住（增益不是关卡），但 agent 读到这句后
-  // 能在铺开后面十几镜之前先请用户过目——真正的灾难是二十个镜头全建在没定妆的脸上，不是这一张。
-  const unfrozen = unfrozenAnchorsForShot(referenceSourceNodes(snapshot, nodeId))
   const advisories: string[] = []
-  if (unfrozen.length) {
-    advisories.push(
-      `这一镜引用的 ${unfrozen.length} 张卡还没定妆：${unfrozen.map((n) => n.title || n.id).join('、')}。`
-      + '没定妆就往下铺镜头，跨镜很容易换脸——建议先把这几张卡拿给用户过目、在卡上点「定妆」确认后再批量生成。',
-    )
-  }
   // 两跳降级的**理由必须说出来**（D4 缺口明着标）。它一直被算出来却从没暴露过——
   // 于是「两跳没跑」这件事在外面表现为**完全静默**，L3-F1b 复验时我只能靠数生成图的张数反推，
   // 还查了半小时才定位。降级本身不是错（它是韧性设计），沉默才是。

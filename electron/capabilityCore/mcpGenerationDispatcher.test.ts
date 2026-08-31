@@ -571,6 +571,17 @@ describe('generation.single-shot dispatcher policy boundary', () => {
     expect(ctx.runTask).not.toHaveBeenCalled()
   })
 
+  it('refuses non-contract video and image backends on generate', async () => {
+    const { ctx } = context({ generationPolicy: policy() })
+    await expect(dispatch('generate', {
+      projectId: 'project-1', vendor: 'dreamina', modelKey: 'seedance', intent: 'video', prompt: 'x',
+    }, ctx as never)).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('autodl-art-h3') })
+    await expect(dispatch('generate', {
+      projectId: 'project-1', vendor: 'kie', modelKey: 'seedream', intent: 'image', prompt: 'x',
+    }, ctx as never)).rejects.toMatchObject({ httpStatus: 400, message: expect.stringContaining('codex-imagegen') })
+    expect(ctx.runTask).not.toHaveBeenCalled()
+  })
+
   it('does not change unknown method errors', async () => {
     const { ctx } = context({ generationPolicy: policy({ enabled: true }) })
     await expect(dispatch('nomi_unknown_generation_method', {}, ctx as never))

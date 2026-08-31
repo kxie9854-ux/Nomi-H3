@@ -97,6 +97,7 @@ type SpendConfirmState = {
   /** Codex 表单已获真人确认、但 app-server 未继续过线时，给同作用域 renderer 门一段有上限的票。 */
   preApprovedAgentSpend: Record<string, number>
   preApproveNextAgentSpend: (scope: string, passes?: number) => void
+  expirePreApprovedAgentSpend: (scope?: string) => void
   /** 弹确认；resolve true/false。light 且本会话已抑制 → 直接 true 不弹。已有在显 → 入队等候（不覆盖）。 */
   requestConfirm: (req: SpendConfirmRequest) => Promise<boolean>
   /** 对话框按钮回调：ok=确认；suppressLight=勾了「本会话不再提示」。决议队首后自动晋升下一个。 */
@@ -110,14 +111,25 @@ export const useSpendConfirmStore = create<SpendConfirmState>()((set, get) => ({
   preApprovedAgentSpend: {},
   preApproveNextAgentSpend: (scope, passes = 1) => {
     if (!scope) return
-    const safePasses = Number.isInteger(passes) && passes > 0 ? passes : 1
+    const safePasses = Number.isInteger(passes) && passes > 0 ? Math.min(passes, 1) : 1
     set((state) => ({
       preApprovedAgentSpend: {
         ...state.preApprovedAgentSpend,
-        // 同一张侧栏卡重发事件时不叠加到无限；只保留它明示的那段授权上限。
         [scope]: Math.max(state.preApprovedAgentSpend[scope] || 0, safePasses),
       },
     }))
+  },
+  expirePreApprovedAgentSpend: (scope) => {
+    if (!scope) {
+      set({ preApprovedAgentSpend: {} })
+      return
+    }
+    set((state) => {
+      if (!(scope in state.preApprovedAgentSpend)) return state
+      const next = { ...state.preApprovedAgentSpend }
+      delete next[scope]
+      return { preApprovedAgentSpend: next }
+    })
   },
   requestConfirm: (req) => {
     // A remembered spend prompt must not suppress a still-unanswered hosting disclosure.

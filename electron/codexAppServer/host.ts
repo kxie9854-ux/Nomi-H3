@@ -18,6 +18,7 @@ import { bindDirectorThread, CODEX_THREAD_READ, CODEX_THREAD_RESUME, CODEX_THREA
 import { createNdjsonParser, encodeNdjson, requestFrame, resultFrame, type JsonRpcIncoming } from "./ndjsonRpc";
 import { resolveCodexBin } from "./resolveCodexBin";
 import { DIRECTOR_SPINE_ID, importedSkillsRoot, skillInputItems, type DirectorSkillRef } from "./directorSkills";
+import { codexAppServerEnv } from "./codexEnv";
 
 export type CodexRpc = (method: string, params?: unknown) => Promise<unknown>;
 export type CodexAppServerHostOptions = {
@@ -224,7 +225,7 @@ export class CodexAppServerHost {
   private child: ChildProcess | null = null;
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
-  private readonly pendingElicitations = new Map<string, { id: string | number; params: Record<string, unknown> }>();
+  private readonly pendingElicitations = new Map<string, { id: string | number; params: Record<string, unknown>; projectId?: string }>();
   /** Threads already started or resumed on the current app-server child. */
   private readonly liveThreadIds = new Set<string>();
   private readonly projectThreads: Map<string, string>;
@@ -341,6 +342,7 @@ export class CodexAppServerHost {
     extraSkills: readonly DirectorSkillRef[] = [],
     turn?: CodexTurnOverride,
   ): Promise<void> {
+    this.declinePendingElicitationsExcept(normalizeDirectorProjectId(projectId) || undefined);
     const threadId = await this.ensureProjectThread(projectId);
     const safeProjectId = normalizeDirectorProjectId(projectId) || undefined;
     // Establish routing before turn/start resolves: app-server notifications may
@@ -474,9 +476,19 @@ export class CodexAppServerHost {
       type: "mcp",
       tool: "nomi",
       status: confirmed ? "accepted" : "declined",
-      ...this.activeProjectEventField(),
+      ...(pending.projectId ? { projectId: pending.projectId } : this.activeProjectEventField()),
     });
     return true;
+  }
+
+  /** Drop JSON-RPC elicitations that are not for the project about to speak. */
+  declinePendingElicitationsExcept(projectId?: string): void {
+    for (const requestId of [...this.pendingElicitations.keys()]) {
+      const pending = this.pendingElicitations.get(requestId);
+      if (!pending) continue;
+      if (projectId && pending.projectId === projectId) continue;
+      this.respondElicitation(requestId, false);
+    }
   }
 
   status(): { ready: boolean; account: CodexAccount } {
@@ -495,7 +507,7 @@ export class CodexAppServerHost {
     // Client JSON-RPC is NDJSON on stdio. `unix://` is a control socket and closes JSON-RPC clients.
     this.child = spawn(bin, ["app-server", "--listen", "stdio://"], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, ...this.extraEnv },
+      env: codexAppServerEnv(this.extraEnv),
     });
     // Child error/exit owns the real failure; absorb the asynchronous EPIPE echo from stdin.
     this.child.stdin?.on("error", () => {});
@@ -547,7 +559,11 @@ export class CodexAppServerHost {
       const requestId = String(message.id);
       const approvalScope = readNomiSpendApprovalScope(params);
       const approvalPasses = readNomiSpendApprovalPasses(params);
-      this.pendingElicitations.set(requestId, { id: message.id!, params });
+      this.pendingElicitations.set(requestId, {
+        id: message.id!,
+        params,
+        ...(this.activeTurn?.projectId ? { projectId: this.activeTurn.projectId } : {}),
+      });
       this.emit({
         kind: "elicitation",
         requestId,
@@ -559,26 +575,17 @@ export class CodexAppServerHost {
       });
       return;
     }
-    if (method === "item/commandExecution/requestApproval") {
-      this.write(resultFrame(message.id!, { decision: "acceptForSession" }));
-      this.emit({ kind: "item", type: "approval", tool: String(params.command || "command"), status: "accepted", ...this.activeProjectEventField() });
+    if (method === "item/commandExecution/requestApproval" || method === "execCommandApproval") {
+      this.write(resultFrame(message.id!, { decision: "decline" }));
+      this.emit({ kind: "item", type: "approval", tool: String(params.command || "command"), status: "declined", ...this.activeProjectEventField() });
       return;
     }
-    if (method === "execCommandApproval") {
-      this.write(resultFrame(message.id!, { decision: "approved_for_session" }));
-      this.emit({ kind: "item", type: "approval", tool: String(params.command || "command"), status: "accepted", ...this.activeProjectEventField() });
-      return;
-    }
-    if (method === "item/fileChange/requestApproval") {
-      this.write(resultFrame(message.id!, { decision: "accept" }));
-      return;
-    }
-    if (method === "applyPatchApproval") {
-      this.write(resultFrame(message.id!, { decision: "approved" }));
+    if (method === "item/fileChange/requestApproval" || method === "applyPatchApproval") {
+      this.write(resultFrame(message.id!, { decision: "decline" }));
       return;
     }
     if (method === "item/permissions/requestApproval") {
-      this.write(resultFrame(message.id!, { permissions: { network: { enabled: true } }, scope: "session" }));
+      this.write(resultFrame(message.id!, { permissions: { network: { enabled: false } }, scope: "session" }));
       return;
     }
     this.emit({ kind: "error", message: `UNHANDLED_CODEX_REQUEST:${method}`, ...this.activeProjectEventField() });

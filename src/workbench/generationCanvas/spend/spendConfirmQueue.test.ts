@@ -69,7 +69,10 @@ describe('spendConfirm FIFO 队列 (B4 · 竞态不丢 resolve)', () => {
 
   it('Codex 面板的同作用域授权按明示上限逐次消费，且不会放行其它模型服务', async () => {
     const store = useSpendConfirmStore.getState()
-    store.preApproveNextAgentSpend('p1\0codex-local\0codex-imagegen', 2)
+    store.preApproveNextAgentSpend('p1\0codex-local\0codex-imagegen', 20)
+    expect(useSpendConfirmStore.getState().preApprovedAgentSpend).toEqual({
+      'p1\0codex-local\0codex-imagegen': 1,
+    })
 
     const approved = await store.requestConfirm({
       title: '首帧',
@@ -78,13 +81,19 @@ describe('spendConfirm FIFO 队列 (B4 · 竞态不丢 resolve)', () => {
       agentApprovalScope: 'p1\0codex-local\0codex-imagegen',
     })
     expect(approved).toBe(true)
-    expect(useSpendConfirmStore.getState().pending).toBeNull()
-    await expect(store.requestConfirm({
+    expect(useSpendConfirmStore.getState().preApprovedAgentSpend).toEqual({})
+    const second = store.requestConfirm({
       title: '尾帧',
       message: '生成？',
       source: 'agent',
       agentApprovalScope: 'p1\0codex-local\0codex-imagegen',
-    })).resolves.toBe(true)
+    })
+    expect(useSpendConfirmStore.getState().pending?.title).toBe('尾帧')
+    useSpendConfirmStore.getState().resolvePending(true)
+    await expect(second).resolves.toBe(true)
+
+    store.preApproveNextAgentSpend('p1\0codex-local\0codex-imagegen', 1)
+    store.expirePreApprovedAgentSpend('p1\0codex-local\0codex-imagegen')
     expect(useSpendConfirmStore.getState().preApprovedAgentSpend).toEqual({})
 
     const h3 = store.requestConfirm({

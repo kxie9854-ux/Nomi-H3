@@ -1,6 +1,6 @@
 # Nomi-H3 fork
 
-Personal AGPL fork of [Nomi](https://github.com/aqm857886159/Nomi) `v0.20.1`. Upstream remote: `upstream`.
+Personal AGPL fork of [Nomi](https://github.com/aqm857886159/Nomi). Integrated through Nomi v0.21 (`4cac784ed2b8f7820ee41811e15b4fbbe03ba7b9`). This tree does **not** track `origin/main`; rebase only when explicitly requested. Upstream remote: `origin` (same GitHub), not a daily merge target.
 
 **继续开发先读根目录 `HANDOFF.md`。** 那是给 Codex 的交接（目标、约束、怎么跑、已做/待做、坑）。不要把本仓库当成 `/Users/aoqimin/Desktop/Nomi` 的上游工作树。
 
@@ -26,4 +26,4 @@ Personal AGPL fork of [Nomi](https://github.com/aqm857886159/Nomi) `v0.20.1`. Up
 - 导演 cwd：userData `codex-director/`，避免吃到仓库 `AGENTS.md` 去跑论文雷达。
 - 成片：MCP `nomi_assemble_timeline` 再 `nomi_export_timeline`（项目必须在前台打开）。
 
-付费提交仍走 Nomi 花费门。当前内嵌路径会自动带 `confirm: true`（见 `HANDOFF.md` P1）。
+付费提交仍走 Nomi 花费门。MCP 工具审批（allow nomi to run tool）自动过；Nomi spend/action elicitation 必须人在侧栏点确认。`nomiElicitationAccept` 只在人点了之后填 `confirm: true`。

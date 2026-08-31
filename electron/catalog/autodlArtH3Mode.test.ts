@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUTODL_ART_H3_DEFAULT_RESOLUTION,
   AUTODL_ART_H3_I2VA_REFUSE,
+  AUTODL_ART_H3_RESOLUTION_REFUSE,
   AUTODL_ART_H3_WORKFLOWS,
   autodlArtH3RejectReason,
+  normalizeAutodlArtH3Resolution,
   prepareAutodlArtH3Params,
   resolveAutodlArtH3WorkflowId,
 } from "./autodlArtH3Mode";
-import { imageEditGuardError } from "./taskParams";
+import { applyHeadlessParamDefaults, imageEditGuardError } from "./taskParams";
+import { AUTODL_ART_H3_I2V_CREATE_OP } from "./autodlArtH3";
 
 describe("resolveAutodlArtH3WorkflowId", () => {
   it("无媒体 → 文生", () => {
@@ -92,10 +96,35 @@ describe("prepareAutodlArtH3Params", () => {
     expect(out.image).toBe("nomi-local://a/f.jpg");
   });
 
-  it("调用方 workflow_id 不被覆盖", () => {
+  it("槽位决定 workflow，忽略错误的 pinned audio graph", () => {
     expect(prepareAutodlArtH3Params({
-      workflow_id: "minimax_h3_lightx2v_v5_15s",
+      workflow_id: "minimax_h3_image_audio_to_video_v2_15s",
       reference_image_urls: ["https://a/1.jpg"],
-    }).workflow_id).toBe("minimax_h3_lightx2v_v5_15s");
+    }).workflow_id).toBe(AUTODL_ART_H3_WORKFLOWS.ref2va);
+  });
+
+  it("缺 resolution 默认 480p竖；480p+9:16 合成中文枚举；英文档位拒绝", () => {
+    expect(prepareAutodlArtH3Params({}).resolution).toBe(AUTODL_ART_H3_DEFAULT_RESOLUTION);
+    expect(normalizeAutodlArtH3Resolution("480p", "9:16")).toBe("480p竖");
+    expect(normalizeAutodlArtH3Resolution("768p", "16:9")).toBe("768p横");
+    expect(normalizeAutodlArtH3Resolution("1080p")).toBeNull();
+    expect(() => prepareAutodlArtH3Params({ resolution: "2K" })).toThrow(AUTODL_ART_H3_RESOLUTION_REFUSE);
+  });
+
+  it("applyHeadlessParamDefaults 也按槽位选 workflow，GUI pin 挡不住", () => {
+    const extras = applyHeadlessParamDefaults(
+      {
+        workflow_id: AUTODL_ART_H3_WORKFLOWS.ref2va_audio,
+        reference_image_urls: ["https://a/1.jpg"],
+      },
+      "minimax-h3-autodl-art",
+      "image_to_video",
+      "autodl-art",
+      AUTODL_ART_H3_I2V_CREATE_OP.defaultParams,
+      AUTODL_ART_H3_I2V_CREATE_OP.body,
+      "autodl-art-h3",
+    );
+    expect(extras?.workflow_id).toBe(AUTODL_ART_H3_WORKFLOWS.ref2va);
+    expect(extras?.resolution).toBe(AUTODL_ART_H3_DEFAULT_RESOLUTION);
   });
 });

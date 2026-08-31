@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "id": "2026-08-31-director-spend-elicitation-lifetime",
+  "problem_type": "pending_jsonrpc_dropped_on_project_switch",
+  "symptom": "Switching projects while Codex is waiting on a Nomi spend elicitation clears the panel card and leaves the app-server JSON-RPC request unanswered, so the turn hangs until interrupt/restart.",
+  "direct_cause": "The panel effect on projectId set elicitation to null without respondElicitation; the host kept the request in pendingElicitations.",
+  "class_root": "Pending server-initiated JSON-RPC requests were owned only by the visible React card, not by the host's project-scoped elicitation map.",
+  "affected_population": [
+    "Users who switch projects while a director spend or action confirmation is on screen",
+    "Users who decline or complete a turn after a Codex panel spend accept that minted leftover renderer bridge tickets"
+  ],
+  "scope_paths": [
+    "electron/codexAppServer/host.ts",
+    "src/workbench/generationCanvas/components/CodexDirectorPanel.tsx",
+    "src/workbench/generationCanvas/spend/spendConfirm.ts"
+  ],
+  "entry_points": [
+    "mcpServer/elicitation/request while a director turn is bound to a project",
+    "CodexDirectorPanel projectId effect",
+    "host.send() starting a turn for another project",
+    "preApproveNextAgentSpend after a panel spend accept"
+  ],
+  "internal_only_reason": "The elicitation is Nomi's own JSON-RPC form over the Codex app-server. No provider spend API is changed.",
+  "invariants": [
+    "Every pending Nomi elicitation is declined or accepted through respondElicitation before it is dropped from UI or replaced by another project's turn.",
+    "Starting a turn for project B declines elicitations that are not for project B.",
+    "Renderer spend-bridge tickets are at most 1, scoped to the elicitation approvalScope, and expire on decline, project switch, and turn-complete."
+  ],
+  "regression_tests": [
+    "electron/codexAppServer/host.test.ts",
+    "src/workbench/generationCanvas/spend/spendConfirmQueue.test.ts"
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any project switch or new turn can drop the visible card while the same pendingElicitations map still holds the JSON-RPC id.",
+    "same_class_scan": [
+      "Searched pendingElicitations, respondElicitation, setElicitation(null), and preApproveNextAgentSpend.",
+      "Host resetSession() already cleared the map on process exit but not on project switch.",
+      "Spend bridge copied nomiSpendApprovalPasses (20) independently of MCP session trust."
+    ]
+  },
+  "prevention": {
+    "strategy": "Host declines foreign elicitations when a new project turn starts; the panel declines the visible card on project change; bridge tickets are 1 and expire with the turn.",
+    "artifacts": [
+      "electron/codexAppServer/host.ts",
+      "src/workbench/generationCanvas/components/CodexDirectorPanel.tsx",
+      "src/workbench/generationCanvas/spend/spendConfirm.ts"
+    ]
+  },
+  "migration": "No persisted data. In-flight hung turns still need interrupt/restart once; subsequent switches decline cleanly.",
+  "residual_risks": [
+    "An elicitation that arrives with no projectId is declined on the next send() for any project, which is fail-closed.",
+    "A compromised renderer can no longer keep a 20-shot bridge window after one panel click; MCP session trust of 20 remains a separate host grant."
+  ]
+}

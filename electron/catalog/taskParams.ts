@@ -10,8 +10,8 @@ import { ARCHETYPE_WIRE_DEFAULTS, ARCHETYPE_SIZE_RATIO_SEMANTIC } from "./archet
 import { bodyReferencedParamKeys } from "./paramTranslate";
 import { bodyReferenceSupport, classifyReferenceKey, classifyReferenceKeyDetailed, type ReferenceFamily } from "./referenceReachability";
 import { readSelectedComfyReferenceContract, type ParameterReferenceSelection } from "./parameterReferenceContract";
-import { AUTODL_ART_VENDOR_SEED } from "./autodlArtH3";
-import { autodlArtH3RejectReason } from "./autodlArtH3Mode";
+import { AUTODL_ART_H3_MODEL_SEED, AUTODL_ART_VENDOR_SEED } from "./autodlArtH3";
+import { autodlArtH3RejectReason, prepareAutodlArtH3Params } from "./autodlArtH3Mode";
 
 /** taskTemplateParams 实际用到的 TaskRequest 子集（结构化，避免与 runtime 的 TaskRequest 循环依赖）。 */
 export type TaskParamsInput = {
@@ -120,9 +120,16 @@ export function applyHeadlessParamDefaults(
     : extras;
   const withDefaults = applyWireDefaults(applyWireDefaults(guarded, archetypeDefaults), mappingDefaults);
   // ③ 参考键形态投影（既有值优先 → 渲染层已填 archetypeInput 时 no-op）。在缺参兜底之后做，看到的是合并后的 extras。
-  if (typeof createBody === "undefined") return withDefaults;
-  const projected = projectReferencesOntoBodyKeys(withDefaults, createBody, { vendorKey, modelKey });
-  return Object.keys(projected).length ? { ...(withDefaults || {}), ...projected } : withDefaults;
+  const projected = typeof createBody === "undefined"
+    ? withDefaults
+    : (() => {
+      const mapped = projectReferencesOntoBodyKeys(withDefaults, createBody, { vendorKey, modelKey });
+      return Object.keys(mapped).length ? { ...(withDefaults || {}), ...mapped } : withDefaults;
+    })();
+  if (vendorKey === AUTODL_ART_VENDOR_SEED.key && modelKey === AUTODL_ART_H3_MODEL_SEED.modelKey && projected) {
+    return prepareAutodlArtH3Params(projected);
+  }
+  return projected;
 }
 
 export function taskTemplateParams(request: TaskParamsInput, selected?: ParameterReferenceSelection): JsonRecord {
